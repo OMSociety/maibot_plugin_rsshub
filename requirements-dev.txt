@@ -1,4 +1,9 @@
 # 开发依赖（运行依赖见 requirements.txt）
 pytest>=8.0
 pytest-asyncio>=0.23
-ruff>=0.5
+
+# 固定 ruff 版本，避免本地与 CI 的格式化结果漂移
+ruff==0.15.22
+
+# 宿主自带 httpx，仓库只跑测试时需要显式安装（含 socks 支持）
+httpx[socks]>=0.28.1
