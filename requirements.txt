@@ -1,0 +1,6 @@
+# 与 _manifest.json dependencies 保持一致；宿主自带依赖（httpx、pillow、aiohttp）不重复列出。
+# 宿主按 manifest 自动安装，本文件供开发环境使用。
+feedparser>=6.0.11
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+filetype>=1.2.0

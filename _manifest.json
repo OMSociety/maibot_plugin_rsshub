@@ -1,0 +1,74 @@
+{
+  "manifest_version": 2,
+  "id": "omsociety.rsshub",
+  "version": "0.1.0",
+  "name": "RSSHub 订阅推送",
+  "description": "RSS/Atom/JSON Feed 订阅、定时轮询与人格化推送，支持三级配置继承、推送历史审计与富媒体降级渲染",
+  "author": {
+    "name": "OMSociety",
+    "url": "https://github.com/OMSociety"
+  },
+  "license": "AGPL-3.0",
+  "urls": {
+    "repository": "https://github.com/OMSociety/maibot_plugin_rsshub"
+  },
+  "host_application": {
+    "min_version": "1.3.14",
+    "max_version": "1.3.99"
+  },
+  "sdk": {
+    "min_version": "2.16.0",
+    "max_version": "2.21.99"
+  },
+  "dependencies": [
+    {
+      "type": "python_package",
+      "name": "feedparser",
+      "version_spec": ">=6.0.11"
+    },
+    {
+      "type": "python_package",
+      "name": "beautifulsoup4",
+      "version_spec": ">=4.12.0"
+    },
+    {
+      "type": "python_package",
+      "name": "lxml",
+      "version_spec": ">=5.0.0"
+    },
+    {
+      "type": "python_package",
+      "name": "filetype",
+      "version_spec": ">=1.2.0"
+    }
+  ],
+  "plugin_type": "tool",
+  "display": {
+    "icon": {
+      "type": "lucide",
+      "value": "rss",
+      "background": "#EA580C"
+    }
+  },
+  "capabilities": [
+    "send.text",
+    "send.image",
+    "send.hybrid",
+    "send.forward",
+    "maisaka.reply.generate",
+    "maisaka.context.append",
+    "maisaka.proactive.trigger",
+    "llm.generate",
+    "chat.open_session",
+    "chat.get_stream_by_group_id",
+    "chat.get_stream_by_user_id",
+    "render.html2png",
+    "config.get"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": [
+      "zh-CN"
+    ]
+  }
+}

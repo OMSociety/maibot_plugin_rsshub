@@ -1,0 +1,124 @@
+"""测试替身：宿主上下文的离线模拟。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+
+class StubLogger:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str]] = []
+
+    def _record(self, level: str, message: str, *args: object) -> None:
+        self.messages.append((level, message % args if args else message))
+
+    def info(self, message: str, *args: object) -> None:
+        self._record("info", message, *args)
+
+    def warning(self, message: str, *args: object) -> None:
+        self._record("warning", message, *args)
+
+    def error(self, message: str, *args: object) -> None:
+        self._record("error", message, *args)
+
+    def exception(self, message: str, *args: object) -> None:
+        self._record("exception", message, *args)
+
+
+class StubSend:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def text(self, text: str, stream_id: str, **kwargs: object) -> bool:
+        self.sent.append((stream_id, text))
+        return True
+
+
+class StubCtx:
+    """提供 send / logger / paths / llm / maisaka 的最小上下文。"""
+
+    def __init__(self, data_dir: Path, reply_text: str = "顺手分享一条订阅更新") -> None:
+        self.logger = StubLogger()
+        self.send = StubSend()
+        self.paths = SimpleNamespace(data_dir=data_dir, runtime_dir=data_dir / "tmp")
+        self.response = reply_text
+        self.llm_calls: list[dict] = []
+        self.mai_reply_calls: list[dict] = []
+        self.mai_append_calls: list[dict] = []
+        self.mai_proactive_calls: list[dict] = []
+        outer = self
+
+        class _Llm:
+            async def generate(self, prompt: str, **kwargs: object) -> dict:
+                outer.llm_calls.append({"prompt": prompt, **kwargs})
+                return {"success": True, "response": '{"allow": true}', "reasoning": "", "model": "stub"}
+
+        class _Reply:
+            async def generate(self, stream_id: str, reference: str, **kwargs: object) -> dict:
+                outer.mai_reply_calls.append({"stream_id": stream_id, "reference": reference, **kwargs})
+                text = outer.response
+                return {"success": bool(text), "text": text, "selected_expression_ids": []}
+
+        class _Context:
+            async def append(self, stream_id: str, segments: list[dict], **kwargs: object) -> dict:
+                outer.mai_append_calls.append({"stream_id": stream_id, "segments": segments, **kwargs})
+                return {"success": True}
+
+        class _Proactive:
+            async def trigger(self, stream_id: str, intent: str, **kwargs: object) -> dict:
+                outer.mai_proactive_calls.append({"stream_id": stream_id, "intent": intent, **kwargs})
+                return {"success": True}
+
+        self.llm = _Llm()
+        self.maisaka = SimpleNamespace(reply=_Reply(), context=_Context(), proactive=_Proactive())
+
+
+class FakeClient:
+    """替代 HttpClient：返回固定 feed 内容，便于离线测试。"""
+
+    def __init__(self, content: bytes = b"", url: str = "https://example.com/feed.xml", status: int = 200) -> None:
+        self.content = content
+        self.url = url
+        self.status = status
+        self.calls: list[dict] = []
+
+    async def fetch(self, url: str, etag: str | None = None, last_modified: object = None) -> object:
+        from rsshub.infrastructure.fetcher.client import FetchResult
+
+        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
+        return FetchResult(url=self.url, status=self.status, content=self.content, headers={}, not_modified=False)
+
+    async def close(self) -> None:
+        return None
+
+
+def make_config(**overrides: object) -> SimpleNamespace:
+    """构造与服务层字段对齐的配置快照。"""
+    config = SimpleNamespace(
+        plugin=SimpleNamespace(enabled=True, config_version="1.0.0"),
+        polling=SimpleNamespace(
+            interval_seconds=600,
+            concurrency=3,
+            request_timeout=15.0,
+            max_entries_per_poll=3,
+            user_agent="test-agent",
+        ),
+        network=SimpleNamespace(proxy_enabled=False, proxy_url="", allow_private_addresses=True),
+        push=SimpleNamespace(
+            default_mode="persona",
+            persona_fallback_to_direct=True,
+            persona_timeout_ms=5000,
+            max_reference_chars=2000,
+            batch_merge=True,
+        ),
+        persona=SimpleNamespace(format_instruction="随口分享"),
+        silent=SimpleNamespace(proactive_trigger=False),
+        media=SimpleNamespace(
+            max_images=3, image_max_bytes=1048576, table_render_enabled=True, multi_image_forward=True
+        ),
+        rsshub=SimpleNamespace(base_url="https://rsshub.app"),
+    )
+    for key, value in overrides.items():
+        setattr(config, key, value)
+    return config

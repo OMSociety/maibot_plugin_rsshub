@@ -1,0 +1,28 @@
+# 运行时配置含代理地址等本机信息，勿提交
+/config.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 工具缓存
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# 运行时产物
+/data/
+/logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 编辑器
+.vscode/
+.idea/
+
+.pytest_tmp/

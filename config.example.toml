@@ -1,0 +1,41 @@
+# RSSHub 订阅推送 —— 配置示例
+# 运行时由宿主在插件目录生成 config.toml，请勿把真实配置提交到仓库。
+# 未知键会被静默忽略；结构与 plugin.py 的配置模型一一对应。
+
+[plugin]
+enabled = true
+config_version = "1.0.0"
+
+[polling]
+interval_seconds = 600       # 全局轮询间隔（秒），单源可在订阅配置中覆盖
+concurrency = 5              # 同时抓取的订阅源数量上限
+request_timeout = 30.0       # 单源 HTTP 超时（秒）
+max_entries_per_poll = 5     # 单轮每源最多推送的新条目数
+user_agent = "maibot-plugin-rsshub/0.1 (+https://github.com/OMSociety/maibot_plugin_rsshub)"
+
+[network]
+proxy_enabled = false
+proxy_url = "http://127.0.0.1:7897"
+allow_private_addresses = false   # 仅在内网自建 RSSHub 时开启
+
+[push]
+default_mode = "persona"     # persona / direct / silent
+persona_fallback_to_direct = true
+persona_timeout_ms = 30000
+max_reference_chars = 8000
+batch_merge = true
+
+[persona]
+format_instruction = """你是群里的熟人，刚看到这些订阅更新，用自己的口吻随口分享给大家。一两句话点出最有意思的内容，别像新闻播报，别逐条罗列标题，别加引号。条目链接附在最后。"""
+
+[silent]
+proactive_trigger = false
+
+[media]
+max_images = 3
+image_max_bytes = 8388608
+table_render_enabled = true
+multi_image_forward = true
+
+[rsshub]
+base_url = "https://rsshub.app"
