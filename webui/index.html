@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSS 订阅</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 24px 40px;
+    font-family: var(--maibot-font-body, "Segoe UI", "Microsoft YaHei", sans-serif);
+    background: var(--maibot-background, #fafafa);
+    color: var(--maibot-foreground, #1f1f23);
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .muted { color: var(--maibot-muted, #71717a); font-size: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 16px 0 20px; }
+  .card {
+    background: var(--maibot-surface, #fff); border: 1px solid var(--maibot-border, #e4e4e7);
+    border-radius: var(--maibot-radius, 10px); padding: 12px 14px;
+  }
+  .card .label { font-size: 12px; color: var(--maibot-muted, #71717a); }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab {
+    border: 1px solid var(--maibot-border, #e4e4e7); background: transparent; color: inherit;
+    padding: 6px 14px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  }
+  .tab[aria-selected="true"] { background: var(--maibot-primary, #18181b); color: var(--maibot-primary-foreground, #fff); border-color: transparent; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--maibot-surface, #fff); }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--maibot-border, #efeff1); vertical-align: top; }
+  th { font-weight: 600; font-size: 12px; color: var(--maibot-muted, #71717a); }
+  tr:last-child td { border-bottom: none; }
+  a { color: var(--maibot-primary, #2563eb); text-decoration: none; }
+  button.action {
+    border: 1px solid var(--maibot-border, #e4e4e7); background: transparent; color: inherit;
+    border-radius: 8px; padding: 3px 9px; font-size: 12px; cursor: pointer; margin: 0 4px 4px 0;
+  }
+  button.action:hover { border-color: var(--maibot-primary, #2563eb); }
+  button.danger { color: var(--maibot-danger, #dc2626); }
+  input.inline, select.inline {
+    font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px;
+    border: 1px solid var(--maibot-border, #e4e4e7); background: var(--maibot-surface, #fff); color: inherit;
+  }
+  input.inline { width: 64px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toolbar input { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--maibot-border, #e4e4e7); background: var(--maibot-surface, #fff); color: inherit; width: 220px; }
+  .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .banner { margin: 8px 0; padding: 8px 12px; border-radius: 8px; font-size: 12px; background: var(--maibot-soft, #f4f4f5); }
+  .banner.error { color: var(--maibot-danger, #dc2626); }
+  .hidden { display: none !important; }
+  textarea {
+    width: 100%; min-height: 120px; font: inherit; font-size: 13px; padding: 10px;
+    border-radius: 8px; border: 1px solid var(--maibot-border, #e4e4e7); background: var(--maibot-surface, #fff); color: inherit;
+  }
+  .status-success { color: #16a34a; }
+  .status-failed, .status-stopped { color: #dc2626; }
+  .status-skipped { color: #a16207; }
+</style>
+</head>
+<body class="maibot-page">
+  <h1>RSS 订阅</h1>
+  <div class="muted" id="subtitle">正在加载…</div>
+  <div class="banner hidden" id="banner" role="status"></div>
+
+  <section class="cards" id="cards"></section>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-view="subs">订阅</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="history">推送历史</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="import">批量导入</button>
+  </div>
+
+  <section id="view-subs">
+    <div class="toolbar">
+      <input id="keyword" placeholder="按标题、链接或会话筛选" aria-label="筛选订阅">
+      <button class="action" id="reload-subs">刷新</button>
+    </div>
+    <table>
+      <thead><tr><th>订阅</th><th>会话</th><th>推送模式</th><th>间隔（分钟）</th><th>下次抓取</th><th>操作</th></tr></thead>
+      <tbody id="subs-body"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody>
+    </table>
+    <div class="pager">
+      <button class="action" id="subs-prev">上一页</button>
+      <span class="muted" id="subs-page">1 / 1</span>
+      <button class="action" id="subs-next">下一页</button>
+    </div>
+  </section>
+
+  <section id="view-history" class="hidden">
+    <div class="toolbar">
+      <select class="inline" id="history-status" aria-label="状态筛选">
+        <option value="">全部状态</option>
+        <option value="success">成功</option>
+        <option value="failed">失败</option>
+        <option value="stopped">已停止</option>
+        <option value="skipped">已过滤</option>
+      </select>
+      <button class="action" id="reload-history">刷新</button>
+    </div>
+    <table>
+      <thead><tr><th>时间</th><th>条目</th><th>来源</th><th>会话</th><th>状态</th></tr></thead>
+      <tbody id="history-body"><tr><td colspan="5" class="muted">加载中…</td></tr></tbody>
+    </table>
+    <div class="pager">
+      <button class="action" id="history-prev">上一页</button>
+      <span class="muted" id="history-page">1 / 1</span>
+      <button class="action" id="history-next">下一页</button>
+    </div>
+  </section>
+
+  <section id="view-import" class="hidden">
+    <p class="muted">每行一个 Feed 地址或 RSSHub 路由；会话留空时仅入库，不推送。</p>
+    <label class="muted" for="import-session">目标会话</label>
+    <input class="inline" id="import-session" placeholder="例如 qq:group:123456" style="width: 260px">
+    <label class="muted" for="import-title">标题前缀</label>
+    <input class="inline" id="import-title" placeholder="可留空" style="width: 180px">
+    <p></p>
+    <textarea id="import-links" placeholder="https://example.com/feed.xml&#10;/github/trending/daily"></textarea>
+    <p><button class="action primary" id="do-import">导入</button></p>
+  </section>
+
+  <script type="module">
+    await maibot.ready;
+
+    const state = { subs: { page: 1, pages: 1, keyword: '' }, history: { page: 1, pages: 1, status: '' } };
+    const $ = (id) => document.getElementById(id);
+
+    function banner(text, isError = false) {
+      const el = $('banner');
+      el.textContent = text;
+      el.classList.toggle('error', isError);
+      el.classList.toggle('hidden', !text);
+      if (text) setTimeout(() => el.classList.add('hidden'), 6000);
+    }
+
+    function fail(error) {
+      banner(error && error.message ? error.message : String(error), true);
+    }
+
+    function el(tag, props = {}, children = []) {
+      const node = document.createElement(tag);
+      for (const [key, value] of Object.entries(props)) {
+        if (key === 'text') node.textContent = value;
+        else if (key === 'class') node.className = value;
+        else node.setAttribute(key, value);
+      }
+      for (const child of children) node.append(child);
+      return node;
+    }
+
+    function link(href, label) {
+      const a = el('a', { href: href || '#', target: '_blank', rel: 'noreferrer noopener' });
+      a.textContent = label;
+      return a;
+    }
+
+    function renderOverview(data) {
+      if (!data || data.ready === false) { $('subtitle').textContent = '插件未加载，无法读取数据'; return; }
+      $('subtitle').textContent = `全局轮询 ${data.poll_interval_minutes} 分钟 · 默认推送 ${data.default_push_mode}`;
+      const cards = [
+        ['订阅', data.subscriptions], ['来源', data.feeds], ['会话', data.sessions],
+        ['24 小时推送', data.pushes_24h], ['24 小时失败', data.failures_24h], ['待重试', data.pending_retry],
+      ];
+      $('cards').replaceChildren(...cards.map(([label, value]) =>
+        el('div', { class: 'card' }, [el('div', { class: 'label', text: label }), el('div', { class: 'value', text: String(value) })])));
+    }
+
+    async function loadOverview() {
+      try { renderOverview(await maibot.query('overview')); } catch (error) { fail(error); }
+    }
+
+    async function loadSubs(page = state.subs.page) {
+      try {
+        const data = await maibot.query('subscriptions', { page, page_size: 20, keyword: state.subs.keyword });
+        state.subs.page = data.page; state.subs.pages = data.pages;
+        $('subs-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
+        const body = $('subs-body');
+        if (!data.items.length) { body.replaceChildren(el('tr', {}, [el('td', { colspan: '6', class: 'muted', text: '暂无订阅' })])); return; }
+        body.replaceChildren(...data.items.map((item) => {
+          const title = el('td', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          const session = el('td', {}, [el('span', { class: 'muted', text: item.session || '未绑定' })]);
+          const mode = el('td', {}, [modeSelect(item)]);
+          const interval = el('td', {}, [intervalInput(item)]);
+          const next = el('td', {}, [el('span', { class: 'muted', text: item.next_check_at ? item.next_check_at.replace('T', ' ').slice(0, 19) : '—' })]);
+          const ops = el('td', {}, [
+            button('立即抓取', () => pollNow(item.id)),
+            button(item.state ? '停用' : '启用', () => setState(item.id, !item.state)),
+            button('删除', () => deleteSub(item.id), 'danger'),
+          ]);
+          return el('tr', {}, [title, session, mode, interval, next, ops]);
+        }));
+      } catch (error) { fail(error); }
+    }
+
+    function button(label, onClick, variant = '') {
+      const btn = el('button', { class: `action ${variant}`.trim(), type: 'button' });
+      btn.textContent = label;
+      btn.addEventListener('click', onClick);
+      return btn;
+    }
+
+    function modeSelect(item) {
+      const select = el('select', { class: 'inline' });
+      for (const [value, label] of [['inherit', '继承'], ['persona', '人格化'], ['direct', '直推'], ['silent', '静默']]) {
+        const option = el('option', { value });
+        option.textContent = label;
+        select.append(option);
+      }
+      select.value = item.push_mode || 'inherit';
+      select.addEventListener('change', () => updateSub(item.id, 'push_mode', select.value));
+      return select;
+    }
+
+    function intervalInput(item) {
+      const input = el('input', { class: 'inline', type: 'number', min: '1', max: '1440' });
+      input.value = item.interval_minutes > 0 ? String(item.interval_minutes) : '';
+      input.placeholder = '继承';
+      const commit = () => {
+        const raw = input.value.trim();
+        if (!raw) return;
+        const minutes = Number(raw);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { banner('间隔需为 1–1440 的整数', true); return; }
+        updateSub(item.id, 'interval', String(minutes));
+      };
+      input.addEventListener('change', commit);
+      return input;
+    }
+
+    async function updateSub(subId, key, value) {
+      try {
+        await maibot.action('update_subscription', { sub_id: subId, key, value });
+        banner(`已更新订阅 #${subId}`);
+        await Promise.all([loadOverview(), loadSubs()]);
+      } catch (error) { fail(error); }
+    }
+
+    async function setState(subId, enabled) {
+      try {
+        await maibot.action('set_state', { sub_id: subId, enabled });
+        banner(`订阅 #${subId} 已${enabled ? '启用' : '停用'}`);
+        await Promise.all([loadOverview(), loadSubs()]);
+      } catch (error) { fail(error); }
+    }
+
+    async function deleteSub(subId) {
+      try {
+        await maibot.action('delete_subscription', { sub_id: subId });
+        banner(`订阅 #${subId} 已删除`);
+        await Promise.all([loadOverview(), loadSubs()]);
+      } catch (error) { fail(error); }
+    }
+
+    async function pollNow(subId) {
+      try {
+        await maibot.action('poll_now', { sub_id: subId });
+        banner(`已把订阅 #${subId} 排入下一轮抓取`);
+      } catch (error) { fail(error); }
+    }
+
+    async function loadHistory(page = state.history.page) {
+      try {
+        const data = await maibot.query('history', { page, page_size: 20, status: state.history.status });
+        state.history.page = data.page; state.history.pages = data.pages;
+        $('history-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
+        const body = $('history-body');
+        if (!data.items.length) { body.replaceChildren(el('tr', {}, [el('td', { colspan: '5', class: 'muted', text: '暂无记录' })])); return; }
+        body.replaceChildren(...data.items.map((item) => {
+          const when = el('td', {}, [el('span', { class: 'muted', text: (item.created_at || '').replace('T', ' ').slice(0, 19) })]);
+          const entry = el('td', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          if (item.fail_reason) entry.append(el('div', { class: 'muted', text: item.fail_reason }));
+          const source = el('td', {}, [el('span', { class: 'muted', text: item.feed_title || '—' })]);
+          const session = el('td', {}, [el('span', { class: 'muted', text: item.session || '—' })]);
+          const status = el('td', {}, [el('span', { class: `status-${item.status || 'pending'}`, text: item.status || '—' })]);
+          if (item.retry_count) status.append(el('span', { class: 'muted', text: ` ×${item.retry_count}` }));
+          return el('tr', {}, [when, entry, source, session, status]);
+        }));
+      } catch (error) { fail(error); }
+    }
+
+    function switchView(view) {
+      for (const tab of document.querySelectorAll('.tab')) {
+        tab.setAttribute('aria-selected', String(tab.dataset.view === view));
+      }
+      $('view-subs').classList.toggle('hidden', view !== 'subs');
+      $('view-history').classList.toggle('hidden', view !== 'history');
+      $('view-import').classList.toggle('hidden', view !== 'import');
+      if (view === 'history') loadHistory(1);
+    }
+
+    document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
+    $('keyword').addEventListener('change', () => { state.subs.keyword = $('keyword').value.trim(); loadSubs(1); });
+    $('reload-subs').addEventListener('click', () => { loadOverview(); loadSubs(); });
+    $('reload-history').addEventListener('click', () => { state.history.status = $('history-status').value; loadHistory(1); });
+    $('subs-prev').addEventListener('click', () => { if (state.subs.page > 1) loadSubs(state.subs.page - 1); });
+    $('subs-next').addEventListener('click', () => { if (state.subs.page < state.subs.pages) loadSubs(state.subs.page + 1); });
+    $('history-prev').addEventListener('click', () => { if (state.history.page > 1) loadHistory(state.history.page - 1); });
+    $('history-next').addEventListener('click', () => { if (state.history.page < state.history.pages) loadHistory(state.history.page + 1); });
+    $('do-import').addEventListener('click', async () => {
+      const links = $('import-links').value.trim();
+      if (!links) { banner('请先填写要导入的地址', true); return; }
+      try {
+        const result = await maibot.action('import_subscriptions', {
+          links,
+          session: $('import-session').value.trim(),
+          title: $('import-title').value.trim(),
+        });
+        const failed = result.failed && result.failed.length ? `；失败 ${result.failed.length} 条：${result.failed[0]}` : '';
+        banner(`已导入 ${result.imported} 条${failed}`, Boolean(result.failed && result.failed.length));
+        await Promise.all([loadOverview(), loadSubs(1)]);
+      } catch (error) { fail(error); }
+    });
+
+    await loadOverview();
+    await loadSubs(1);
+  </script>
+</body>
+</html>

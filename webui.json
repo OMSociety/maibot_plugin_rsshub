@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "required_capabilities": ["custom_pages"],
+  "workspace_title": "RSS 订阅",
+  "pages": [
+    {
+      "id": "dashboard",
+      "title": "RSS 订阅",
+      "description": "订阅列表、推送历史与参数调整",
+      "placement": "sidebar",
+      "icon": "list",
+      "mode": "custom",
+      "entry": "webui/index.html",
+      "layout": "document",
+      "queries": {
+        "overview": { "api": "webui_overview" },
+        "subscriptions": {
+          "api": "webui_list_subscriptions",
+          "parameters": {
+            "page": { "type": "integer", "minimum": 1, "maximum": 10000 },
+            "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "keyword": { "type": "string", "max_length": 200 }
+          }
+        },
+        "history": {
+          "api": "webui_list_history",
+          "parameters": {
+            "page": { "type": "integer", "minimum": 1, "maximum": 10000 },
+            "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "status": { "type": "string", "max_length": 32 }
+          }
+        }
+      },
+      "actions": {
+        "update_subscription": {
+          "api": "webui_update_subscription",
+          "parameters": {
+            "sub_id": { "type": "integer", "required": true, "minimum": 1 },
+            "key": { "type": "string", "required": true, "max_length": 64 },
+            "value": { "type": "string", "required": true, "max_length": 4000 }
+          }
+        },
+        "set_state": {
+          "api": "webui_set_subscription_state",
+          "parameters": {
+            "sub_id": { "type": "integer", "required": true, "minimum": 1 },
+            "enabled": { "type": "boolean", "required": true }
+          }
+        },
+        "delete_subscription": {
+          "api": "webui_delete_subscription",
+          "parameters": { "sub_id": { "type": "integer", "required": true, "minimum": 1 } },
+          "confirmation": "确认删除这个订阅？删除后不会自动恢复。"
+        },
+        "poll_now": {
+          "api": "webui_poll_now",
+          "parameters": { "sub_id": { "type": "integer", "required": true, "minimum": 1 } }
+        },
+        "import_subscriptions": {
+          "api": "webui_import_subscriptions",
+          "parameters": {
+            "links": { "type": "string", "required": true, "max_length": 20000 },
+            "session": { "type": "string", "max_length": 255 },
+            "title": { "type": "string", "max_length": 200 }
+          }
+        }
+      }
+    }
+  ]
+}

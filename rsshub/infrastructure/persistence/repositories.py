@@ -346,6 +346,13 @@ class PushHistoryRepository:
         )
         return [history_from_row(row) for row in rows]
 
+    def list_recent(self, limit: int = 200) -> list[PushHistory]:
+        rows = self._db.query(
+            "SELECT * FROM rsshub_push_history ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [history_from_row(row) for row in rows]
+
     def list_retryable(self, limit: int = 50) -> list[PushHistory]:
         rows = self._db.query(
             "SELECT * FROM rsshub_push_history WHERE status='failed' AND retry_count < max_retries ORDER BY id LIMIT ?",

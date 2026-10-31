@@ -30,6 +30,7 @@ from .rsshub.application.tools.rss_tools import RssToolsMixin
 from .rsshub.domain.settings import GlobalDefaults
 from .rsshub.infrastructure.fetcher.client import HttpClient
 from .rsshub.infrastructure.persistence.store import Store
+from .rsshub.interfaces.web_api import WebApiMixin
 
 # ────────────────────────────── 配置模型 ──────────────────────────────
 
@@ -254,7 +255,7 @@ class RsshubPluginConfig(PluginConfigBase):
 # ────────────────────────────── 插件主类 ──────────────────────────────
 
 
-class RsshubPlugin(RssToolsMixin, RssCommandsMixin, MaiBotPlugin):
+class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
     """插件主类：薄入口，组件实现见 src/。"""
 
     config_model = RsshubPluginConfig
