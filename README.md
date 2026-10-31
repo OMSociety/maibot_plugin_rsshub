@@ -17,7 +17,7 @@
 
 ## 安装
 
-宿主要求：MaiBot 1.3.14 及以上，`maibot-plugin-sdk` 2.16.0 及以上。
+宿主要求：MaiBot 1.3.14–1.3.99，`maibot-plugin-sdk` 2.16.0–2.21.99（与 `_manifest.json` 声明一致）。
 
 把仓库放到宿主 `plugins/` 目录（目录名 `omsociety_rsshub`），或通过插件中心安装。宿主按 `_manifest.json` 的 `dependencies` 自动安装 Python 依赖。
 
@@ -83,10 +83,11 @@
 ## 开发
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/ -q
-ruff check . && ruff format .
-python <path-to-check_plugin.py> .
+pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.16.0"
+python -m pytest -q
+ruff format --check . && ruff check .
+python tools/check_webui.py .
+python tools/check_agents_md.py --root .
 ```
 
 测试宿主环境与生产实例分离；联调时把本仓库目录拷到宿主 `plugins/omsociety_rsshub` 后热重载。

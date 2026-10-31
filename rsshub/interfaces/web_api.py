@@ -118,22 +118,6 @@ class WebApiMixin:
         total = len(rows)
         return {"items": items, "total": total, "page": page, "pages": max(1, (total + page_size - 1) // page_size)}
 
-    @API("webui_get_subscription", description="单个订阅详情")
-    async def webui_get_subscription(self, sub_id: int = 0) -> dict[str, Any]:
-        sub = self._web_sub(sub_id)
-        feed = self.store.repos.feeds.get(sub.feed_id) if self.store else None
-        settings = self.sub_service.describe(sub, self.defaults) if self.sub_service else {}
-        return {
-            "id": sub.id,
-            "title": sub.title,
-            "link": feed.link if feed else "",
-            "session": sub.target_session or "",
-            "settings": settings,
-            "handlers": sub.handlers,
-            "handlers_mode": sub.handlers_mode,
-            "option_keys": sorted(SUB_OPTION_KEYS),
-        }
-
     # ── 操作 ────────────────────────────────────────────────────
 
     @API("webui_update_subscription", description="修改订阅选项")

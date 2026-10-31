@@ -4,7 +4,7 @@
 https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub
 衍生作品，遵循 AGPL-3.0 许可。
 
-组件：15 个 @Tool（LLM 主力交互）+ 5 个 @Command（高频命令）+ 9 个 WebUI @API。
+组件：15 个 @Tool（LLM 主力交互）+ 5 个 @Command（高频命令）+ 8 个 WebUI @API。
 逻辑下沉在 rsshub/ 各模块，本文件只做组件声明与薄转发。
 """
 

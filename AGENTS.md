@@ -6,7 +6,7 @@
 ## 项目概览
 
 - 一句话定位：MaiBot（麦麦）的 RSS/Atom 订阅插件，负责定时抓取、去重推送，并把订阅读写暴露成 LLM 工具、聊天命令与 WebUI 页面。
-- 技术栈：Python ≥3.11（宿主实测 3.12）；`maibot-plugin-sdk` 2.16.0–2.21.99；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / filetype；pytest + ruff；GitHub Actions 跑双 SDK 矩阵。
+- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖）；`maibot-plugin-sdk` 2.16.0–2.21.99；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / filetype；pytest + ruff；GitHub Actions 跑双 SDK 矩阵。
 - 文档索引：
   - 功能、安装、配置、命令与工具表：[README.md](./README.md)
   - 变更记录：[CHANGELOG.md](./CHANGELOG.md)
@@ -22,6 +22,7 @@
 | 跑单个测试文件 | `python -m pytest tests/test_dispatcher.py -q` |
 | Lint | `ruff check .` |
 | 格式检查 | `ruff format --check .` |
+| 校验 WebUI 声明 | `python tools/check_webui.py .` |
 | 校验本文件 | `python tools/check_agents_md.py --root .` |
 
 换 SDK 版本验证时，把 `maibot-plugin-sdk==2.16.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
@@ -34,7 +35,7 @@ python -m pytest -q
 
 ```text
 plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
-  └─> rsshub/interfaces/web_api.py     WebUI 的 9 个 @API
+  └─> rsshub/interfaces/web_api.py     WebUI 的 8 个 @API
   └─> rsshub/application               services / tools / commands
         └─> rsshub/domain              实体与三级配置继承
         └─> rsshub/infrastructure      persistence / fetcher / media / rendering / schedule
@@ -50,8 +51,8 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 | 我要… | 改这里 |
 |---|---|
-| 加一个 LLM 工具 | `rsshub/application/tools/rss_tools.py`（仿 `rss_subscribe`），并同步 `_manifest.json` 的 `capabilities` |
-| 加一个聊天命令 | `rsshub/application/commands/rss_commands.py`（正则用 `re.search`，处理函数自己 `ctx.send.text`） |
+| 加一个 LLM 工具 | 顺序：① 在 `rsshub/application/tools/rss_tools.py` 仿 `rss_subscribe` 写方法（混入类由 Runner 自动收集，不需要在 `plugin.py` 里登记）→ ② 若用到新的 `ctx.*` 能力，同一次改动补 `_manifest.json` 的 `capabilities` → ③ 补测试 → ④ 同步 README 的工具表与 CHANGELOG 里的数量 → ⑤ 跑验收四项 |
+| 加一个聊天命令 | `rsshub/application/commands/rss_commands.py`（`@Command` 的 `pattern` 由宿主用 `re.search` 匹配，参数从 `matched_groups` 取；处理函数必须自己 `ctx.send.text`，宿主不代发） |
 | 加或改 WebUI 接口 | `rsshub/interfaces/web_api.py` 加 `@API`，再在 `webui.json` 的 `queries`/`actions` 里声明绑定 |
 | 改抓取、解析、去重 | `rsshub/infrastructure/fetcher/`（`client` / `parser` / `dedup` / `url_guard`） |
 | 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `SCHEMA_VERSION` 与迁移；同步 `repositories.py`、`models.py` |
@@ -64,10 +65,10 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 修改契约
 
-- 改配置结构或默认值：改 `plugin.py` 的 config_model，并递增 `plugin.config_version`；`config.toml` 由宿主生成，不要提交。
+- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.0.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
 - 改能力调用：新增任何 `ctx.*` 能力调用，必须同步 `_manifest.json` 的 `capabilities`，否则运行期报 `E_CAPABILITY_DENIED`。
 - 改 `webui.json` 或绑定：宿主在插件注册时校验声明，无效会让整个插件注册失败；改完必须重载插件并确认日志没有「WebUI 声明无效」。
-- 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先向维护者报备。
+- 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。
 - 改依赖：Python 包同时写进 `requirements.txt` 与 `_manifest.json` 的 `dependencies`。
 - 用 SDK 新 API：本插件声明下限 2.16.0，2.17.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
 
@@ -77,6 +78,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 - 禁止改写已发布的 tag 或 Release。原因：插件市场按 tag 索引版本。要修只能发新版本。
 - 禁止绕过 `rsshub/infrastructure/fetcher/url_guard.py` 直接请求用户给的 URL。原因：它承担 SSRF 拦截（环回、私网、链路本地地址）。
 - 禁止删除 `push_history` 成功的幂等记录来「让测试通过」。原因：去重与重试依赖它，删记录会导致重复推送。
+- 禁止手改 `tools/check_agents_md.py`。原因：它是从 agent-onboarding 技能原样拷贝的校验脚本，改样式会与上游脱节；升级时整份替换即可（已在 `ruff.toml` 的 `exclude` 里排除）。
 
 ## 验收标准
 
@@ -85,11 +87,15 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 1. `python -m pytest -q`
 2. `ruff check .`
 3. `ruff format --check .`
-4. `python tools/check_agents_md.py --root .`
+4. `python tools/check_webui.py .`
+5. `python tools/check_agents_md.py --root .`
+
+CI 矩阵跑 SDK 2.16.0（声明下限）与 2.21.0（声明上界 2.21.99 内的最近发布版）；补丁版之间不逐个跑。
 
 ## 提交与协作
 
-- 分支：直接在 `main` 上提交（单人维护仓库），发布用 tag `vX.Y.Z`。
+- 分支：直接在 `main` 上提交，发布用 tag。
+- 发版：改 `_manifest.json` 的 `version` 与 `CHANGELOG.md` → 提交推送 → `git tag -a vX.Y.Z -m "vX.Y.Z"` → `git push origin vX.Y.Z` → `gh release create vX.Y.Z --notes-file <正文>`（正文即 CHANGELOG 对应条目，中英双语）。CI 的 `tag matches manifest` 任务会核对 tag 与 manifest 版本。
 - Commit：沿用历史前缀 `feat:` / `fix:` / `docs:` / `chore:`，正文写清为什么改。
 
 ## 已知风险区
@@ -100,6 +106,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 未全部投递成功会回滚 ETag，靠推送历史去重 | 改投递逻辑时保留该回滚，否则会漏推 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
+| `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值 | 改配置后到 WebUI 的插件配置页逐项核对，或看日志里的生效值 |
 | 部署目录 | 宿主插件目录名是 `omsociety_rsshub`，包名是 `rsshub` | 同步时拷目录内容，不要为了对齐去改包名 |
 
 ## 出错怎么办
@@ -114,5 +121,5 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 维护
 
-本文件与代码同一次提交更新。改动以下内容时必须同步本文件：验收命令、分层边界、能力声明方式、发版流程、风险区。
+本文件与代码同一次提交更新。改动以下内容时必须同步本文件：验收命令、分层边界、能力声明方式、工具/命令数量（README 与 CHANGELOG 同改）、发版流程、风险区。
 发现内容与代码不符时，先改本文件，再继续改代码。

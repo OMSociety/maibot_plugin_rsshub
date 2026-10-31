@@ -46,6 +46,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check webui declaration
+        run: python tools/check_webui.py .
+
       - name: Check AGENTS.md
         run: python tools/check_agents_md.py --root . --no-path
 
