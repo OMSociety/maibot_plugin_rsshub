@@ -1,4 +1,7 @@
-# Ruff 配置：与 AstrBot 上游 ruff 口径对齐（pin 版本见仓库 pyproject.toml）
+# Ruff 配置：ruff 版本见 requirements-dev.txt
+# 仓库内 vendored 的校验脚本按原样保留，不参与本项目风格约束
+exclude = ["tools/check_agents_md.py"]
+
 target-version = "py311"
 line-length = 120
 
