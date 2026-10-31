@@ -21,6 +21,7 @@ class Entry:
     link: str = ""
     author: str = ""
     content: str = ""
+    content_html: str = ""
     summary: str = ""
     guid: str = ""
     entry_id: str = ""

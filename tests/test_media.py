@@ -1,0 +1,165 @@
+"""富媒体：图片候选、下载限额、图文混排与合并转发、表格渲染、音视频链接卡。"""
+
+from __future__ import annotations
+
+import base64
+
+import pytest
+
+from rsshub.application.services.dispatcher import Dispatcher
+from rsshub.domain.entry import Entry
+from rsshub.domain.settings import EffectiveSettings
+from rsshub.infrastructure.media.downloader import MediaDownloader, av_link_card_text, collect_media_candidates
+from rsshub.infrastructure.persistence.models import Feed, Subscription
+from rsshub.infrastructure.persistence.store import Store
+from tests.support import FakeClient, StubCtx, make_config
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+BIG = b"\x89PNG\r\n\x1a\n" + b"0" * 4096
+
+
+def _settings(mode: str = "direct", display_media: int = 0) -> EffectiveSettings:
+    return EffectiveSettings(
+        interval_seconds=600,
+        notify=True,
+        push_mode=mode,
+        length_limit=0,
+        display_author=0,
+        display_via=0,
+        display_title=0,
+        display_entry_tags=0,
+        style=0,
+        display_media=display_media,
+    )
+
+
+def _entry(**kwargs: object) -> Entry:
+    base = {"title": "标题", "link": "https://example.com/post/1"}
+    base.update(kwargs)
+    return Entry(**base)
+
+
+def test_collect_media_candidates_from_html_and_enclosures() -> None:
+    entry = _entry(
+        content_html='<p>正文</p><img src="/img/a.png"><img src="https://cdn.example.com/b.jpg">',
+    )
+    images, av = collect_media_candidates(entry)
+
+    assert images == ["https://example.com/img/a.png", "https://cdn.example.com/b.jpg"]
+    assert av == []
+
+
+def test_av_links_become_link_card_text() -> None:
+    entry = _entry(content_html='<video src="/v/demo.mp4"></video>')
+    images, av = collect_media_candidates(entry)
+
+    assert images == []
+    assert av == ["https://example.com/v/demo.mp4"]
+    text = av_link_card_text(av)
+    assert "音视频" in text and "demo.mp4" in text
+
+
+@pytest.mark.asyncio
+async def test_downloader_respects_limits_and_skips_oversized() -> None:
+    client = FakeClient(payloads={"https://example.com/a.png": PNG, "https://example.com/b.png": BIG})
+    downloader = MediaDownloader(client, max_images=2, max_bytes=1024)
+
+    bundle = await downloader.collect(
+        [_entry(content_html='<img src="https://example.com/a.png"><img src="https://example.com/b.png">')]
+    )
+
+    assert len(bundle.images) == 1
+    assert base64.b64decode(bundle.images[0]) == PNG
+    assert bundle.skipped == 1
+
+
+@pytest.fixture
+def store(tmp_path: object) -> Store:
+    return Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]
+
+
+def _db_fixtures(store: Store) -> tuple[Feed, Subscription]:
+    store.repos.users.get_or_create("u1")
+    feed = store.repos.feeds.save(Feed(link="https://example.com/feed.xml", title="示例源"))
+    sub = store.repos.subs.save(Subscription(user_id="u1", feed_id=feed.id, target_session="s1"))
+    return feed, sub
+
+
+@pytest.mark.asyncio
+async def test_single_image_uses_hybrid(store: Store, tmp_path: object) -> None:
+    client = FakeClient(payloads={"https://example.com/a.png": PNG})
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    feed, sub = _db_fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config(), client)
+
+    await dispatcher.push(
+        sub=sub,
+        feed=feed,
+        entries=[_entry(content_html='<img src="https://example.com/a.png">')],
+        settings=_settings(),
+        stream_id="s1",
+    )
+
+    assert ctx.send.hybrid_calls
+    kinds = [segment["type"] for segment in ctx.send.hybrid_calls[0]["segments"]]
+    assert kinds == ["text", "image"]
+    assert ctx.send.forward_calls == []
+
+
+@pytest.mark.asyncio
+async def test_multiple_images_use_forward(store: Store, tmp_path: object) -> None:
+    payloads = {"https://example.com/a.png": PNG, "https://example.com/b.png": PNG}
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    feed, sub = _db_fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config(), FakeClient(payloads=payloads))
+
+    await dispatcher.push(
+        sub=sub,
+        feed=feed,
+        entries=[_entry(content_html='<img src="https://example.com/a.png"><img src="https://example.com/b.png">')],
+        settings=_settings(),
+        stream_id="s1",
+    )
+
+    assert ctx.send.forward_calls
+    content = ctx.send.forward_calls[0]["messages"][0]["content"]
+    assert [segment["type"] for segment in content] == ["text", "image", "image"]
+
+
+@pytest.mark.asyncio
+async def test_table_rendered_when_enabled(store: Store, tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    feed, sub = _db_fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config(), FakeClient())
+
+    await dispatcher.push(
+        sub=sub,
+        feed=feed,
+        entries=[_entry(content_html="<table><tr><td>1</td></tr></table>")],
+        settings=_settings(),
+        stream_id="s1",
+    )
+
+    assert ctx.render_calls, "含表格的正文应走 render.html2png"
+    assert ctx.send.hybrid_calls
+    images = [s for s in ctx.send.hybrid_calls[0]["segments"] if s["type"] == "image"]
+    assert images and images[0]["content"] == ctx.render_payload
+
+
+@pytest.mark.asyncio
+async def test_media_disabled_sends_plain_text(store: Store, tmp_path: object) -> None:
+    client = FakeClient(payloads={"https://example.com/a.png": PNG})
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    feed, sub = _db_fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config(), client)
+
+    await dispatcher.push(
+        sub=sub,
+        feed=feed,
+        entries=[_entry(content_html='<img src="https://example.com/a.png">')],
+        settings=_settings(display_media=-1),
+        stream_id="s1",
+    )
+
+    assert ctx.send.sent
+    assert ctx.send.hybrid_calls == []

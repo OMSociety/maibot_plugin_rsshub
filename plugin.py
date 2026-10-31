@@ -312,7 +312,7 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, MaiBotPlugin):
             proxy=proxy,
         )
         self.handler_chain = ContentHandlerChain(self.ctx)
-        self._dispatcher = Dispatcher(self.ctx, self.store, config)
+        self._dispatcher = Dispatcher(self.ctx, self.store, config, self._client)
         self._poller = FeedPoller(self.ctx, self.store, config, self._client, self.handler_chain, self._dispatcher)
         self.sub_service = SubscriptionService(self.ctx, self.store, config, self._client)
         self._scheduler = Scheduler(self.ctx, self.store, config, self._poller, self._dispatcher)

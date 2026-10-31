@@ -84,6 +84,7 @@ def parse_feed(body: bytes, feed_url: str) -> FeedDocument:
             content = raw["content"][0].get("value", "") if isinstance(raw["content"], list) else str(raw["content"])
         if not content:
             content = raw.get("content_encoded") or raw.get("summary") or ""
+        raw_content_html = content
         summary = strip_html(raw.get("summary") or raw.get("description") or "")
         content = strip_html(content) or summary
 
@@ -109,6 +110,7 @@ def parse_feed(body: bytes, feed_url: str) -> FeedDocument:
             link=link,
             author=_clean_text(raw.get("author", "")),
             content=content,
+            content_html=raw_content_html,
             summary=summary,
             guid=raw.get("guid", "") or "",
             entry_id=str(raw.get("id", "") or ""),

@@ -29,9 +29,19 @@ class StubLogger:
 class StubSend:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.hybrid_calls: list[dict] = []
+        self.forward_calls: list[dict] = []
 
     async def text(self, text: str, stream_id: str, **kwargs: object) -> bool:
         self.sent.append((stream_id, text))
+        return True
+
+    async def hybrid(self, segments: list[dict], stream_id: str, **kwargs: object) -> bool:
+        self.hybrid_calls.append({"stream_id": stream_id, "segments": segments})
+        return True
+
+    async def forward(self, messages: list[dict], stream_id: str, **kwargs: object) -> bool:
+        self.forward_calls.append({"stream_id": stream_id, "messages": messages})
         return True
 
 
@@ -70,24 +80,47 @@ class StubCtx:
                 outer.mai_proactive_calls.append({"stream_id": stream_id, "intent": intent, **kwargs})
                 return {"success": True}
 
+        class _Render:
+            async def html2png(self, html: str, **kwargs: object) -> dict:
+                outer.render_calls.append({"html": html, **kwargs})
+                return {"image_base64": outer.render_payload, "mime_type": "image/png"}
+
+        self.render_payload = "dGFibGU="
+        self.render_calls: list[dict] = []
         self.llm = _Llm()
+        self.render = _Render()
         self.maisaka = SimpleNamespace(reply=_Reply(), context=_Context(), proactive=_Proactive())
 
 
 class FakeClient:
     """替代 HttpClient：返回固定 feed 内容，便于离线测试。"""
 
-    def __init__(self, content: bytes = b"", url: str = "https://example.com/feed.xml", status: int = 200) -> None:
+    def __init__(
+        self,
+        content: bytes = b"",
+        url: str = "https://example.com/feed.xml",
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+        payloads: dict[str, bytes] | None = None,
+    ) -> None:
         self.content = content
         self.url = url
         self.status = status
+        self.headers = headers or {}
+        self.payloads = payloads or {}
         self.calls: list[dict] = []
 
     async def fetch(self, url: str, etag: str | None = None, last_modified: object = None) -> object:
         from rsshub.infrastructure.fetcher.client import FetchResult
 
         self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
-        return FetchResult(url=self.url, status=self.status, content=self.content, headers={}, not_modified=False)
+        if url in self.payloads:
+            return FetchResult(
+                url=url, status=200, content=self.payloads[url], headers=self.headers, not_modified=False
+            )
+        return FetchResult(
+            url=self.url, status=self.status, content=self.content, headers=self.headers, not_modified=False
+        )
 
     async def close(self) -> None:
         return None
