@@ -1,10 +1,14 @@
-"""富媒体收集与下载：正文图、enclosure、表格渲染，以及音视频链接卡。
+"""富媒体收集与下载：正文图、enclosure、音视频文件与表格渲染。
 
-能力边界（SDK 2.16.0）：宿主只有文本、图片、图文混排与合并转发四条发送通道，
-没有视频/音频/文件通道。因此音视频一律降级为链接卡文本。
+宿主对文件发送有作用域限制：``ctx.files.*`` 只在模型工具调用期间可用（宿主按调用会话
+签发 1 小时文件凭证），后台调度器的推送拿不到凭证。因此音视频的呈现分两条路径：
 
-REMOVAL：SDK ≥ 2.17.0 提供 ``ctx.files.send`` 后，把 ``_audio_video_links`` 产出的
-链接卡换成文件发送，并移除本模块中 ``link_card`` 相关分支。
+- 工具调用内（``rss_push_xml_entry``）：下载后走 ``ctx.files.upload`` + ``ctx.files.send``
+  以原文件送达当前会话；
+- 后台定时推送：没有文件凭证，附一行音视频链接，由用户点开原始地址。
+
+没有作用域时调用 ``ctx.files.*`` 会抛 ``PermissionError``，由 :class:`FileAttachments`
+捕获后返回 0，调用方据此退回链接行。
 """
 
 from __future__ import annotations
@@ -12,7 +16,9 @@ from __future__ import annotations
 import base64
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urljoin
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+from uuid import uuid4
 
 from bs4 import BeautifulSoup
 
@@ -23,6 +29,16 @@ from ..fetcher.client import HttpClient
 _IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/avif")
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".mov", ".m3u8")
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".flac")
+_MIME_BY_SUFFIX = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+}
 
 
 @dataclass
@@ -151,11 +167,94 @@ class MediaDownloader:
 
 
 def av_link_card_text(links: list[str], *, title: str = "") -> str:
-    """音视频降级为链接卡文本。
-
-    REMOVAL：SDK ≥ 2.17.0 的 ``ctx.files.send`` 可用后，改为文件发送，删除本函数。
-    """
+    """无文件凭证时的音视频链接行。"""
     if not links:
         return ""
     header = f"{title}\n" if title else ""
     return header + "\n".join(f"音视频：{link}" for link in links)
+
+
+@dataclass
+class TransferFile:
+    """已落到临时目录、等待上传的附件。"""
+
+    path: Path
+    name: str
+    mime: str
+
+
+def _guess_file_type(url: str, headers: dict[str, str]) -> tuple[str, str]:
+    content_type = (headers.get("content-type") or "").split(";")[0].strip().lower()
+    if content_type.startswith(("audio/", "video/")):
+        suffix = Path(urlparse(url).path).suffix.lower()
+        return suffix, content_type
+    path = urlparse(url).path
+    suffix = Path(path).suffix.lower()
+    return suffix, _MIME_BY_SUFFIX.get(suffix, "application/octet-stream")
+
+
+class FileAttachments:
+    """把音视频下载到临时目录，再经宿主文件服务送达当前工具调用的会话。
+
+    逐条串行：宿主一次只发一个文件，且上传凭证与调用会话绑定。任何一条失败不阻断其余
+    条目，失败数由调用方换算成链接行。上限同时约束文件数与单文件体积，避免长视频把
+    工具调用拖到超时。
+    """
+
+    def __init__(self, ctx: object, client: HttpClient, *, max_files: int, max_bytes: int) -> None:
+        self._ctx = ctx
+        self._client = client
+        self._max_files = max(0, max_files)
+        self._max_bytes = max(0, max_bytes)
+
+    async def deliver(self, links: list[str], directory: Path) -> int:
+        """返回成功送达的文件数；失败或超出上限的条目由调用方转成链接。"""
+        if not links or self._max_files == 0 or self._max_bytes == 0:
+            return 0
+        directory.mkdir(parents=True, exist_ok=True)
+        sent = 0
+        for url in links[: self._max_files]:
+            transfer = await self._download(url, directory)
+            if transfer is None:
+                continue
+            try:
+                if await self._send(transfer):
+                    sent += 1
+            finally:
+                transfer.path.unlink(missing_ok=True)
+        return sent
+
+    async def _download(self, url: str, directory: Path) -> TransferFile | None:
+        try:
+            result = await self._client.fetch(url)
+        except FeedFetchError:
+            return None
+        if result.status != 200 or not result.content:
+            return None
+        if len(result.content) > self._max_bytes:
+            return None
+        suffix, mime = _guess_file_type(result.url or url, result.headers)
+        path = directory / f"{uuid4().hex}{suffix}"
+        path.write_bytes(result.content)
+        return TransferFile(path=path, name=f"{path.stem}{suffix}", mime=mime)
+
+    async def _send(self, transfer: TransferFile) -> bool:
+        files = getattr(self._ctx, "files", None)
+        if files is None:
+            return False
+        try:
+            uploaded = await files.upload(transfer.path, name=transfer.name, mime_type=transfer.mime)
+            file_ref = uploaded.get("file_ref") if isinstance(uploaded, dict) else ""
+            if not file_ref:
+                self._log(f"RSS 附件上传未返回 file_ref：{transfer.name}")
+                return False
+            result = await files.send(file_ref)
+            return not (isinstance(result, dict) and result.get("error"))
+        except Exception as exc:  # 宿主拒绝（无凭证）与传输失败都退回链接行
+            self._log(f"RSS 附件发送失败，改用链接：{exc}")
+            return False
+
+    def _log(self, message: str) -> None:
+        logger = getattr(self._ctx, "logger", None)
+        if logger is not None:
+            logger.warning(message)

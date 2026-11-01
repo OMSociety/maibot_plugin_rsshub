@@ -44,7 +44,7 @@ class PluginSection(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用插件")
     config_version: str = Field(
-        default="1.0.0",
+        default="1.1.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
@@ -188,13 +188,11 @@ class SilentSection(PluginConfigBase):
 
 
 class MediaSection(PluginConfigBase):
-    """富媒体与降级。
+    """富媒体与附件。
 
-    注意：video_mode/audio_mode 当前固定为 link_card 降级形态——本 SDK 基线（2.16.0）
-    没有视频/音频/文件发送通道。SDK 2.17.0 引入 ctx.files.send 后应新增 files 模式
-    并移除 link_card 降级实现（见 src/application/services/dispatcher.py 与
-    src/infrastructure/media/downloader.py 中的 REMOVAL 注释），届时本字段才可放开
-    枚举取值；宿主未升级前保持现状。
+    音频与视频的送达方式取决于调用来源：模型工具调用期间宿主签发文件凭证，可以按原
+    文件发送；后台定时推送没有凭证，只能附链接行。attach_files 控制工具调用内的文件
+    发送，定时推送不受该开关影响。
     """
 
     __ui_label__ = "富媒体"
@@ -223,6 +221,25 @@ class MediaSection(PluginConfigBase):
         default=True,
         description="多图时以合并转发形式发送，false 则图文混排在一条消息里",
         json_schema_extra={"label": "多图合并转发"},
+    )
+    attach_files: bool = Field(
+        default=True,
+        description="工具推送时把音频/视频按原文件发送（后台定时推送无文件凭证，始终附链接）",
+        json_schema_extra={"label": "发送音视频文件"},
+    )
+    max_files: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description="单次工具推送最多附带的音视频文件数，0 表示一律附链接",
+        json_schema_extra={"label": "附件数量上限"},
+    )
+    file_max_bytes: int = Field(
+        default=20971520,
+        ge=1048576,
+        le=104857600,
+        description="单个音视频文件的大小上限（字节），超限改为附链接",
+        json_schema_extra={"label": "附件大小上限"},
     )
 
 

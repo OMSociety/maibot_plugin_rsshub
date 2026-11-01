@@ -10,7 +10,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# 允许通过 MAIBOT_SDK_PATH 指定 SDK 解压目录（双版本验证时切换）
+# 允许通过 MAIBOT_SDK_PATH 指定 SDK 解压目录（离线跑测试时用）
 _sdk_path = os.environ.get("MAIBOT_SDK_PATH")
 if _sdk_path:
     sys.path.insert(0, _sdk_path)

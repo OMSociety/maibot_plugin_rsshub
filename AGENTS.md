@@ -6,7 +6,7 @@
 ## 项目概览
 
 - 一句话定位：MaiBot（麦麦）的 RSS/Atom 订阅插件，负责定时抓取、去重推送，并把订阅读写暴露成 LLM 工具、聊天命令与 WebUI 页面。
-- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.16.0–2.21.99；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / filetype；pytest + ruff；GitHub Actions 跑双 SDK 矩阵。
+- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.21.0–2.21.99（宿主 MaiBot 1.3.19 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / filetype；pytest + ruff；GitHub Actions 跑声明下限的 SDK。
 - 文档索引：
   - 功能、安装、配置、命令与工具表：[README.md](./README.md)
   - 变更记录：[CHANGELOG.md](./CHANGELOG.md)
@@ -17,7 +17,7 @@
 
 | 目的 | 命令 |
 |---|---|
-| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.16.0"` |
+| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.21.0"` |
 | 跑全部测试 | `python -m pytest -q` |
 | 跑单个测试文件 | `python -m pytest tests/test_dispatcher.py -q` |
 | Lint | `ruff check .` |
@@ -25,7 +25,7 @@
 | 校验 WebUI 声明 | `python tools/check_webui.py .`（核对 `webui.json` 的 `api` 与 `web_api.py` 的 `@API` 名称、参数一致，页面入口存在且不超过 2 MiB，能力名合法） |
 | 校验本文件 | `python tools/check_agents_md.py --root .` |
 
-换 SDK 版本验证时，把 `maibot-plugin-sdk==2.16.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
+验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.21.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
 
 ```bash
 python -m pytest -q
@@ -67,13 +67,14 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 修改契约
 
-- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.0.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
+- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.1.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
 - 改能力调用：新增任何 `ctx.*` 能力调用，必须同步 `_manifest.json` 的 `capabilities`，否则运行期报 `E_CAPABILITY_DENIED`。
 - 改 `webui.json` 或绑定：宿主在插件注册时校验声明，无效会让整个插件注册失败；改完必须重载插件并确认日志没有「WebUI 声明无效」。
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。
 - `plugin.config_version` 与 `_manifest.json` 的 `version` 相互独立：前者只跟配置结构走，发版不必动它。
 - 改依赖：Python 包同时写进 `requirements.txt` 与 `_manifest.json` 的 `dependencies`。
-- 用 SDK 新 API：本插件声明下限 2.16.0，2.17.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
+- 用 SDK 新 API：本插件声明下限 2.21.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
+- 音视频文件只能经工具调用发送：宿主只为模型工具调用签发文件凭证（`ctx.files.*`），后台调度器推送没有凭证，音视频一律附链接行。不要为了「统一体验」把链接行改成 `ctx.files.send`，后台会抛 `PermissionError`。
 
 ## 禁止操作
 
@@ -85,7 +86,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 验收标准
 
-改动完成 = 下列全部通过（CI 在 SDK 2.16.0 与 2.21.0 上各跑一遍）：
+改动完成 = 下列全部通过（CI 在 SDK 2.21.0 上跑一遍）：
 
 1. `python -m pytest -q`
 2. `ruff check .`
@@ -93,7 +94,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 4. `python tools/check_webui.py .`
 5. `python tools/check_agents_md.py --root .`
 
-CI 矩阵跑 SDK 2.16.0（声明下限）与 2.21.0（声明上界 2.21.99 内的最近发布版）；补丁版之间不逐个跑。
+CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 
 ## 提交与协作
 
@@ -110,6 +111,7 @@ CI 矩阵跑 SDK 2.16.0（声明下限）与 2.21.0（声明上界 2.21.99 内�
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 未全部投递成功会回滚 ETag，靠推送历史去重 | 改投递逻辑时保留该回滚，否则会漏推 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
+| `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；误用 `ctx.files` 会在调度器里抛 `PermissionError` | 改音视频呈现时先确认调用来源是否有文件凭证 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |
 | 部署目录 | 宿主插件目录名是 `omsociety_rsshub`，包名是 `rsshub` | 同步时拷目录内容，不要为了对齐去改包名 |
 

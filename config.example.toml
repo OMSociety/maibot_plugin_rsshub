@@ -36,6 +36,10 @@ max_images = 3
 image_max_bytes = 8388608
 table_render_enabled = true
 multi_image_forward = true
+# 工具推送时把音频/视频按原文件发送；后台定时推送没有文件凭证，始终附链接
+attach_files = true
+max_files = 2
+file_max_bytes = 20971520
 
 [rsshub]
 base_url = "https://rsshub.app"

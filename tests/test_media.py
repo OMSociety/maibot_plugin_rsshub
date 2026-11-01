@@ -9,7 +9,12 @@ import pytest
 from rsshub.application.services.dispatcher import Dispatcher
 from rsshub.domain.entry import Entry
 from rsshub.domain.settings import EffectiveSettings
-from rsshub.infrastructure.media.downloader import MediaDownloader, av_link_card_text, collect_media_candidates
+from rsshub.infrastructure.media.downloader import (
+    FileAttachments,
+    MediaDownloader,
+    av_link_card_text,
+    collect_media_candidates,
+)
 from rsshub.infrastructure.persistence.models import Feed, Subscription
 from rsshub.infrastructure.persistence.store import Store
 from tests.support import FakeClient, StubCtx, make_config
@@ -163,3 +168,59 @@ async def test_media_disabled_sends_plain_text(store: Store, tmp_path: object) -
 
     assert ctx.send.sent
     assert ctx.send.hybrid_calls == []
+
+
+MP3 = b"ID3" + b"0" * 32
+
+
+@pytest.mark.asyncio
+async def test_file_attachments_upload_and_send(tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    client = FakeClient(payloads={"https://example.com/ep.mp3": MP3})
+    attachments = FileAttachments(ctx, client, max_files=2, max_bytes=1024)
+
+    sent = await attachments.deliver(["https://example.com/ep.mp3"], tmp_path / "media")  # type: ignore[operator]
+
+    assert sent == 1
+    assert ctx.files.uploads[0]["mime_type"] == "audio/mpeg"
+    assert ctx.files.sent == [f"file://{ctx.files.uploads[0]['name']}"]
+    assert not list((tmp_path / "media").iterdir())  # type: ignore[operator]
+
+
+@pytest.mark.asyncio
+async def test_file_attachments_without_scope_returns_zero(tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    ctx.files.fail_with = PermissionError("文件凭证无效或已过期")
+    client = FakeClient(payloads={"https://example.com/ep.mp3": MP3})
+    attachments = FileAttachments(ctx, client, max_files=2, max_bytes=1024)
+
+    sent = await attachments.deliver(["https://example.com/ep.mp3"], tmp_path / "media")  # type: ignore[operator]
+
+    assert sent == 0
+    assert ctx.files.sent == []
+    assert not list((tmp_path / "media").iterdir())  # type: ignore[operator]
+
+
+@pytest.mark.asyncio
+async def test_file_attachments_respect_limits(tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    client = FakeClient(
+        payloads={
+            "https://example.com/a.mp3": MP3,
+            "https://example.com/b.mp3": MP3,
+            "https://example.com/huge.mp4": b"0" * 2048,
+        }
+    )
+    attachments = FileAttachments(ctx, client, max_files=1, max_bytes=1024)
+
+    sent = await attachments.deliver(
+        [
+            "https://example.com/a.mp3",
+            "https://example.com/b.mp3",
+            "https://example.com/huge.mp4",
+        ],
+        tmp_path / "media",  # type: ignore[operator]
+    )
+
+    assert sent == 1
+    assert len(ctx.files.uploads) == 1

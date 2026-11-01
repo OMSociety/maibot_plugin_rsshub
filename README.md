@@ -12,12 +12,12 @@
 - **三级配置继承**：订阅源 → 用户默认 → 全局默认，逐层覆盖；会话默认另行保存
 - **内容处理链**：`ai_filter` 过滤、`ai_transform` 改写，按订阅源或用户挂载
 - **推送历史**：每次推送落库，失败自动重试，可按会话查询
-- **富媒体**：正文图与封面图随消息发出，多图合并转发，表格渲染成图片；音视频降级为链接卡
+- **富媒体**：正文图与封面图随消息发出，多图合并转发，表格渲染成图片；音视频在工具推送里按原文件发送，定时推送附链接
 - **WebUI 管理台**：在麦麦 WebUI 侧栏管理订阅、改推送参数、看推送历史与批量导入
 
 ## 安装
 
-宿主要求：MaiBot 1.3.14–1.3.99，`maibot-plugin-sdk` 2.16.0–2.21.99（与 `_manifest.json` 声明一致）。
+宿主要求：MaiBot 1.3.19–1.3.99，`maibot-plugin-sdk` 2.21.0–2.21.99（与 `_manifest.json` 声明一致）。
 
 把仓库放到宿主 `plugins/` 目录（目录名 `omsociety_rsshub`），或通过插件中心安装。宿主按 `_manifest.json` 的 `dependencies` 自动安装 Python 依赖。
 
@@ -74,7 +74,7 @@
 
 本插件是重设计而非逐行搬运，以下能力在原插件存在、在这里按宿主能力做了取舍：
 
-- **音视频与文件**：宿主当前只有文字、图片、图文混排、合并转发四种发送通道，音频与视频以链接卡呈现。等宿主提供文件通道后会改为直传，相关代码处留有标记。
+- **音视频与文件**：宿主只为模型工具调用签发文件发送凭证，因此 `rss_push_xml_entry` 推送的音视频按原文件发送；后台定时推送没有凭证，音频与视频在正文末尾附一行原始链接。
 - **RSSHub Routes 知识库**：原插件内置的 RSSHub 路由检索未移植，订阅时直接填路由即可，宿主侧也没有可供写入的知识库。
 - **管理台**：由 AstrBot 的 Plugin Pages 改为宿主 WebUI 的插件页面，功能覆盖订阅管理、推送历史、参数调整与批量导入。
 - **数据迁移**：不读取原插件的数据库，需要在麦麦里重新订阅。
@@ -83,7 +83,7 @@
 ## 开发
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.16.0"
+pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.21.0"
 python -m pytest -q
 ruff format --check . && ruff check .
 python tools/check_webui.py .

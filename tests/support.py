@@ -90,6 +90,28 @@ class StubCtx:
         self.llm = _Llm()
         self.render = _Render()
         self.maisaka = SimpleNamespace(reply=_Reply(), context=_Context(), proactive=_Proactive())
+        self.files = StubFiles()
+
+
+class StubFiles:
+    """文件能力桩：记录上传与发送，可注入失败（模拟无凭证时的 PermissionError）。"""
+
+    def __init__(self) -> None:
+        self.uploads: list[dict] = []
+        self.sent: list[str] = []
+        self.fail_with: Exception | None = None
+
+    async def upload(self, path: object, name: str = "", mime_type: str = "") -> dict:
+        if self.fail_with is not None:
+            raise self.fail_with
+        self.uploads.append({"path": path, "name": name, "mime_type": mime_type})
+        return {"file_ref": f"file://{name}", "max_bytes": 32 * 1024 * 1024}
+
+    async def send(self, file_ref: str) -> dict:
+        if self.fail_with is not None:
+            raise self.fail_with
+        self.sent.append(file_ref)
+        return {"sent": True, "message_id": len(self.sent)}
 
 
 class FakeClient:
@@ -148,7 +170,13 @@ def make_config(**overrides: object) -> SimpleNamespace:
         persona=SimpleNamespace(format_instruction="随口分享"),
         silent=SimpleNamespace(proactive_trigger=False),
         media=SimpleNamespace(
-            max_images=3, image_max_bytes=1048576, table_render_enabled=True, multi_image_forward=True
+            max_images=3,
+            image_max_bytes=1048576,
+            table_render_enabled=True,
+            multi_image_forward=True,
+            attach_files=True,
+            max_files=2,
+            file_max_bytes=20971520,
         ),
         rsshub=SimpleNamespace(base_url="https://rsshub.app"),
     )

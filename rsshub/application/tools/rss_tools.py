@@ -7,11 +7,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 from maibot_sdk import Tool
 
 from ...errors import RsshubError
+from ...infrastructure.media.downloader import (
+    FileAttachments,
+    av_link_card_text,
+    collect_media_candidates,
+)
 from ...infrastructure.persistence.models import PushHistory
 from ..services.content_handler import HandlerContext
 from ..services.message_format import build_direct_text
@@ -254,7 +260,12 @@ class RssToolsMixin:
 
         sub = self.store.repos.subs.list_by_session(stream_id)
         settings = self.sub_service.resolve_for_session(stream_id, sub[0] if sub else None)
+        av_links = collect_media_candidates(entry)[1] if settings.display_media >= 0 else []
+        attached = await self._attach_av_files(av_links)
         text = build_direct_text(source_key, [entry], settings)
+        remaining = av_links[attached:]
+        if remaining:
+            text = f"{text}\n{av_link_card_text(remaining)}"
         sent = await self.ctx.send.text(text, stream_id)
         delivered = bool(sent.get("sent")) if isinstance(sent, dict) else bool(sent)
         record = PushHistory(
@@ -275,7 +286,32 @@ class RssToolsMixin:
         self.store.repos.history.add(record)
         if not delivered:
             return {"success": False, "content": "推送发送失败，已记入历史等待重试"}
-        return {"success": True, "content": "已推送到当前会话", "structured_content": {"history_id": record.id}}
+        note = f"，附 {attached} 个音视频文件" if attached else ""
+        return {
+            "success": True,
+            "content": f"已推送到当前会话{note}",
+            "structured_content": {"history_id": record.id, "attachments": attached},
+        }
+
+    async def _attach_av_files(self, links: list[str]) -> int:
+        """把音视频按原文件送达当前工具调用会话，返回成功的文件数。
+
+        宿主只为模型工具调用签发文件凭证，因此该路径只在工具内可用；下载失败或超出
+        数量/体积上限的条目由调用方改为在正文里附链接。
+        """
+        if not links:
+            return 0
+        media = getattr(self.config, "media", None)
+        client = getattr(self, "_client", None)
+        if media is None or client is None or not media.attach_files:
+            return 0
+        attachments = FileAttachments(
+            self.ctx,
+            client,
+            max_files=int(media.max_files),
+            max_bytes=int(media.file_max_bytes),
+        )
+        return await attachments.deliver(links, Path(self.ctx.paths.runtime_dir) / "rsshub-media")
 
     # ── 内容处理链 ──────────────────────────────────────────────
 
