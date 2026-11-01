@@ -10,6 +10,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-01
+
+### 变更
+
+- 基线抬到 MaiBot 1.3.19 与 `maibot-plugin-sdk` 2.21.0：`_manifest.json` 的 `host_application.min_version` 与 `sdk.min_version` 同步上调，CI 改为单版本矩阵
+- 音视频发送：`rss_push_xml_entry` 工具推送时经宿主文件服务发送原文件（`files.upload` + `files.send`）；后台定时推送没有文件凭证，仍在正文末尾附链接行
+- 配置 `config_version` 升至 1.1.0：`[media]` 新增 `attach_files`、`max_files`、`file_max_bytes`
+
+### Changed
+
+- Baseline raised to MaiBot 1.3.19 and `maibot-plugin-sdk` 2.21.0: manifest minimums follow, and CI runs a single-version matrix
+- Audio and video: `rss_push_xml_entry` now delivers original files through the host file service (`files.upload` + `files.send`); scheduled pushes have no file scope and keep appending links
+- `config_version` is now 1.1.0: `[media]` gains `attach_files`, `max_files`, and `file_max_bytes`
+
 ## [0.1.0] - 2026-11-01
 
 ### 新增
@@ -32,4 +46,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.2.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.0
 [0.1.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.1.0
