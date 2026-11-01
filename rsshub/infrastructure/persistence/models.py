@@ -92,6 +92,9 @@ class PushHistory:
     retry_count: int = 0
     max_retries: int = 3
     fail_reason: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+    completed_at: str | None = None
 
 
 def _loads(value: str | None, default: Any) -> Any:
@@ -185,4 +188,7 @@ def history_from_row(row: Any) -> PushHistory:
         retry_count=row["retry_count"],
         max_retries=row["max_retries"],
         fail_reason=row["fail_reason"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        completed_at=row["completed_at"],
     )

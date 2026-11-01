@@ -36,7 +36,12 @@ def harness(tmp_path: object) -> Harness:
 
 @pytest.mark.asyncio
 async def test_overview_reports_counts(harness: Harness) -> None:
+    from rsshub.infrastructure.persistence.models import PushHistory
+
     await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    harness.store.repos.history.add(
+        PushHistory(user_id="u1", content="x", target_session="s1", status="success", source_type="agent")
+    )
 
     data = await harness.webui_overview()
 
@@ -45,6 +50,8 @@ async def test_overview_reports_counts(harness: Harness) -> None:
     assert data["feeds"] == 1
     assert data["sessions"] == 1
     assert data["poll_interval_minutes"] == 10
+    assert data["pushes_24h"] == 1
+    assert data["failures_24h"] == 0
 
 
 @pytest.mark.asyncio
