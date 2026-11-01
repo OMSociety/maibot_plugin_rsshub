@@ -10,6 +10,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-01
+
+### 新增
+
+- 配置项 `[plugin] tools_enabled`（「向麦麦提供订阅工具」）：关闭后不再向宿主注册 15 个 LLM 工具，麦麦只能通过命令与 WebUI 管理订阅；`config_version` 升至 1.3.0
+
+### 说明
+
+宿主只在插件注册时收集组件，切换开关后需要到插件页点一次「重载」；重载前工具仍在工具表里，但会直接回绝并提示已关闭。
+
+### Added
+
+- New `[plugin] tools_enabled` switch: with it off the plugin no longer registers its 15 LLM tools, leaving chat commands and the WebUI page as the only interfaces; `config_version` is now 1.3.0
+
+### Note
+
+The host collects components at plugin registration, so toggling the switch takes full effect after reloading the plugin; until then the tools stay in the tool list and refuse calls with a notice.
+
 ## [0.3.1] - 2026-11-01
 
 ### 变更
@@ -120,6 +138,7 @@ Renamed keys are no longer read; the plugin config page shows the new fields wit
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.3.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.2
 [0.3.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.0
 [0.2.3]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.3
