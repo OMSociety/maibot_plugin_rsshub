@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -22,6 +23,20 @@ from ...infrastructure.media.downloader import (
 from ...infrastructure.persistence.models import PushHistory
 from ..services.content_handler import HandlerContext
 from ..services.message_format import build_direct_text
+
+
+def tools_enabled(func: Any) -> Any:
+    """配置开关关闭时让工具直接回绝，避免调用方拿到半可用状态。"""
+
+    @functools.wraps(func)
+    async def wrapper(self: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        plugin_cfg = getattr(getattr(self, "config", None), "plugin", None)
+        if plugin_cfg is not None and not bool(getattr(plugin_cfg, "tools_enabled", True)):
+            return {"success": False, "content": "订阅工具已在插件配置里关闭，改用 /订阅 等命令或让主人重新打开"}
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
 
 MAX_XML_BYTES = 256 * 1024
 MAX_XML_NODES = 4096
@@ -58,6 +73,7 @@ class RssToolsMixin:
             "tags": {"type": "string", "description": "订阅标签，逗号分隔", "required": False},
         },
     )
+    @tools_enabled
     async def rss_subscribe(
         self, link: str = "", title: str = "", tags: str = "", stream_id: str = "", **kwargs: Any
     ) -> dict[str, Any]:
@@ -93,6 +109,7 @@ class RssToolsMixin:
             },
         },
     )
+    @tools_enabled
     async def rss_unsubscribe(self, subscription_id: int = 0, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         try:
             removed = self.sub_service.unsubscribe(str(kwargs.get("user_id") or ""), stream_id, subscription_id or None)
@@ -103,6 +120,7 @@ class RssToolsMixin:
         return {"success": True, "content": f"已取消 {removed} 个订阅"}
 
     @Tool("rss_unsubscribe_all", description="取消当前会话的全部订阅")
+    @tools_enabled
     async def rss_unsubscribe_all(self, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         removed = self.store.repos.subs.delete_by_session(stream_id)
         if not removed:
@@ -110,6 +128,7 @@ class RssToolsMixin:
         return {"success": True, "content": f"已取消当前会话全部 {removed} 个订阅"}
 
     @Tool("rss_list_subscriptions", description="列出当前会话的订阅及其推送配置")
+    @tools_enabled
     async def rss_list_subscriptions(self, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         subs = self.sub_service.list_for_session(stream_id)
         if not subs:
@@ -134,6 +153,7 @@ class RssToolsMixin:
             "value": {"type": "string", "description": "选项值，按 option 的类型传整数/字符串"},
         },
     )
+    @tools_enabled
     async def rss_set_subscription_option(
         self, subscription_id: int = 0, option: str = "", value: str = "", **kwargs: Any
     ) -> dict[str, Any]:
@@ -153,6 +173,7 @@ class RssToolsMixin:
             "value": {"type": "string", "description": "选项值"},
         },
     )
+    @tools_enabled
     async def rss_set_user_default_option(self, option: str = "", value: str = "", **kwargs: Any) -> dict[str, Any]:
         try:
             self.sub_service.set_user_option(str(kwargs.get("user_id") or ""), option, value)
@@ -168,6 +189,7 @@ class RssToolsMixin:
             "value": {"type": "string", "description": "选项值"},
         },
     )
+    @tools_enabled
     async def rss_set_session_default_option(
         self, option: str = "", value: str = "", stream_id: str = "", **kwargs: Any
     ) -> dict[str, Any]:
@@ -178,6 +200,7 @@ class RssToolsMixin:
         return {"success": True, "content": f"当前会话默认值已更新：{json.dumps(updated, ensure_ascii=False)}"}
 
     @Tool("rss_get_session_defaults", description="查看当前会话的默认推送设置")
+    @tools_enabled
     async def rss_get_session_defaults(self, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         defaults = self.sub_service.get_session_defaults(stream_id)
         if not defaults:
@@ -191,6 +214,7 @@ class RssToolsMixin:
         description="查看当前会话最近的推送记录与失败原因",
         parameters={"limit": {"type": "integer", "description": "返回条数，默认 10", "required": False}},
     )
+    @tools_enabled
     async def rss_list_push_history(self, limit: int = 10, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         records = self.store.repos.history.list_by_session(stream_id, max(1, min(limit, 50)))
         if not records:
@@ -216,6 +240,7 @@ class RssToolsMixin:
             "tags": {"type": "string", "description": "标签，逗号分隔", "required": False},
         },
     )
+    @tools_enabled
     async def rss_push_xml_entry(
         self,
         source_key: str = "",
@@ -319,6 +344,7 @@ class RssToolsMixin:
     # ── 内容处理链 ──────────────────────────────────────────────
 
     @Tool("rss_list_handlers", description="列出内置的内容处理 handler 及其配置写法")
+    @tools_enabled
     async def rss_list_handlers(self) -> dict[str, Any]:
         return {
             "success": True,
@@ -339,6 +365,7 @@ class RssToolsMixin:
             "subscription_id": {"type": "integer", "description": "订阅编号，0 表示查看用户级", "required": False},
         },
     )
+    @tools_enabled
     async def rss_get_handlers(self, subscription_id: int = 0, **kwargs: Any) -> dict[str, Any]:
         user_id = str(kwargs.get("user_id") or "")
         if subscription_id:
@@ -366,6 +393,7 @@ class RssToolsMixin:
             },
         },
     )
+    @tools_enabled
     async def rss_set_subscription_handlers(
         self, subscription_id: int = 0, handlers_json: str = "", **kwargs: Any
     ) -> dict[str, Any]:
@@ -391,6 +419,7 @@ class RssToolsMixin:
             "handlers_json": {"type": "string", "description": "handler 数组的 JSON 文本；传 [] 清空"},
         },
     )
+    @tools_enabled
     async def rss_set_user_handlers(self, handlers_json: str = "", **kwargs: Any) -> dict[str, Any]:
         user_id = str(kwargs.get("user_id") or "")
         try:
@@ -418,6 +447,7 @@ class RssToolsMixin:
             },
         },
     )
+    @tools_enabled
     async def rss_rewrite_entry(
         self, title: str = "", content: str = "", handlers_json: str = "", **kwargs: Any
     ) -> dict[str, Any]:

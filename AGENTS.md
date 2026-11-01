@@ -67,13 +67,14 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 修改契约
 
-- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.2.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
+- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.3.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
 - 改能力调用：新增任何 `ctx.*` 能力调用，必须同步 `_manifest.json` 的 `capabilities`，否则运行期报 `E_CAPABILITY_DENIED`。
 - 改 `webui.json` 或绑定：宿主在插件注册时校验声明，无效会让整个插件注册失败；改完必须重载插件并确认日志没有「WebUI 声明无效」。
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。
 - `plugin.config_version` 与 `_manifest.json` 的 `version` 相互独立：前者只跟配置结构走，发版不必动它。
 - 改依赖：Python 包同时写进 `requirements.txt` 与 `_manifest.json` 的 `dependencies`。
 - 用 SDK 新 API：本插件声明下限 2.21.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
+- 工具开关：`plugin.tools_enabled` 关闭时 `get_components()` 会过滤掉全部 TOOL，且每个工具由 `tools_enabled` 装饰器兜底回绝；宿主只在注册时收集组件，所以开关改动必须重载插件才彻底生效。新增工具时把 `@tools_enabled` 放在 `@Tool` 内侧，别漏。
 - 音视频文件只能经工具调用发送：宿主只为模型工具调用签发文件凭证（`ctx.files.*`），后台调度器推送没有凭证，音视频一律附链接行。不要为了「统一体验」把链接行改成 `ctx.files.send`，后台会抛 `PermissionError`。
 
 ## 禁止操作

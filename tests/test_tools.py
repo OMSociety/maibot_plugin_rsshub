@@ -75,3 +75,28 @@ async def test_xml_push_dedupes_same_entry(tmp_path: object) -> None:
 
     assert second["success"] is True
     assert "已经推送过" in second["content"]
+
+
+def test_tool_switch_hides_components_from_host() -> None:
+    from collections import Counter
+
+    from maibot_plugin_rsshub.plugin import create_plugin
+
+    instance = create_plugin()
+    instance.set_plugin_config({"plugin": {"config_version": "1.3.0", "tools_enabled": False}})
+    assert Counter(item["type"] for item in instance.get_components()) == {"API": 8, "COMMAND": 6}
+
+    instance.set_plugin_config({"plugin": {"config_version": "1.3.0", "tools_enabled": True}})
+    assert Counter(item["type"] for item in instance.get_components())["TOOL"] == 15
+
+
+@pytest.mark.asyncio
+async def test_tool_switch_refuses_calls_before_reload(tmp_path: object) -> None:
+    harness = _harness(tmp_path)
+    harness.config.plugin.tools_enabled = False
+
+    result = await harness.rss_subscribe(link="https://example.com/feed.xml", stream_id="s1")
+
+    assert result["success"] is False
+    assert "关闭" in result["content"]
+    assert harness.store.repos.subs.list_by_session("s1") == []

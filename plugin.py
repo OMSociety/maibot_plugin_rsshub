@@ -43,8 +43,16 @@ class PluginSection(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用插件")
+    tools_enabled: bool = Field(
+        default=True,
+        description="是否把 15 个订阅工具提供给麦麦调用",
+        json_schema_extra={
+            "label": "向麦麦提供订阅工具",
+            "hint": "关闭后麦麦看不到这些工具，只能用 /订阅 等命令；在插件页点「重载」后完全消失",
+        },
+    )
     config_version: str = Field(
-        default="1.2.0",
+        default="1.3.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
@@ -316,6 +324,18 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
         self._poller: FeedPoller | None = None
         self._dispatcher: Dispatcher | None = None
         self._scheduler: Scheduler | None = None
+
+    def get_components(self) -> list[dict[str, Any]]:
+        """按配置决定是否把工具注册给宿主。
+
+        宿主只在插件注册时收集组件，所以开关改动要重载插件才会反映到工具列表；
+        未重载前 ``tools_enabled`` 装饰器仍会让工具直接回绝，避免半可用状态。
+        """
+        components = super().get_components()
+        plugin_cfg = getattr(getattr(self, "config", None), "plugin", None)
+        if plugin_cfg is None or bool(getattr(plugin_cfg, "tools_enabled", True)):
+            return components
+        return [item for item in components if str(item.get("type")) != "TOOL"]
 
     # ── 生命周期 ────────────────────────────────────────────────
 

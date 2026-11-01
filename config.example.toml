@@ -4,6 +4,8 @@
 
 [plugin]
 enabled = true
+# 是否把 15 个订阅工具提供给麦麦；关闭后只能用 /订阅 等命令与 WebUI
+tools_enabled = true
 config_version = "1.0.0"
 
 [polling]
