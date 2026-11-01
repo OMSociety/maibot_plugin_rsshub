@@ -12,6 +12,7 @@ from typing import Any
 
 from maibot_sdk import Tool
 
+from ...domain.settings import resolve_settings
 from ...errors import RsshubError
 from ...infrastructure.media.downloader import (
     FileAttachments,
@@ -259,7 +260,9 @@ class RssToolsMixin:
             return {"success": True, "content": "这条内容已经推送过，跳过"}
 
         sub = self.store.repos.subs.list_by_session(stream_id)
-        settings = self.sub_service.resolve_for_session(stream_id, sub[0] if sub else None)
+        user_id = str(kwargs.get("user_id") or "")
+        user = self.store.repos.users.get(user_id) if user_id else None
+        settings = resolve_settings(sub[0] if sub else None, user, self.defaults)
         av_links = collect_media_candidates(entry)[1] if settings.display_media >= 0 else []
         attached = await self._attach_av_files(av_links)
         text = build_direct_text(source_key, [entry], settings)

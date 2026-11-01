@@ -111,7 +111,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 未全部投递成功会回滚 ETag，靠推送历史去重 | 改投递逻辑时保留该回滚，否则会漏推 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
-| `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；误用 `ctx.files` 会在调度器里抛 `PermissionError` | 改音视频呈现时先确认调用来源是否有文件凭证 |
+| `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |
 | 部署目录 | 宿主插件目录名是 `omsociety_rsshub`，包名是 `rsshub` | 同步时拷目录内容，不要为了对齐去改包名 |
 

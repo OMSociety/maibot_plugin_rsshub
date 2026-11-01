@@ -360,10 +360,12 @@ class PushHistoryRepository:
         )
         return [history_from_row(row) for row in rows]
 
-    def count_for_entry(self, entry_link: str, target_session: str | None) -> int:
+    def count_for_entry(self, entry_guid: str, target_session: str | None) -> int:
+        """同一条目在同一会话已成功推送的次数（按 guid，避免同链接不同条目互相误伤）。"""
         row = self._db.query_one(
-            "SELECT COUNT(*) AS n FROM rsshub_push_history WHERE entry_link=? AND target_session IS ?",
-            (entry_link, target_session),
+            "SELECT COUNT(*) AS n FROM rsshub_push_history "
+            "WHERE entry_guid=? AND target_session IS ? AND status='success'",
+            (entry_guid, target_session),
         )
         return int(row["n"]) if row else 0
 

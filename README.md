@@ -19,6 +19,8 @@
 
 宿主要求：MaiBot 1.3.19–1.3.99，`maibot-plugin-sdk` 2.21.0–2.21.99（与 `_manifest.json` 声明一致）。
 
+音视频文件发送还要求宿主配置 `[capabilities] files = true`（宿主 WebUI「能力」页的文件开关）；未开启时工具推送会检测到文件服务不可用，自动退回链接行。
+
 把仓库放到宿主 `plugins/` 目录（目录名 `omsociety_rsshub`），或通过插件中心安装。宿主按 `_manifest.json` 的 `dependencies` 自动安装 Python 依赖。
 
 首次加载后插件在 WebUI 的「插件配置」里生成配置项；订阅数据存在宿主给插件分配的 `data_dir` 下，不写宿主目录。
