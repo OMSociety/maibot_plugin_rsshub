@@ -10,6 +10,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-01
+
+### 变更
+
+- 配置项按「人看得懂」重做：分区改名为抓取与轮询、网络与代理、人格化播报、静默注入、富媒体与附件；每个字段的标签带单位，说明写清后果，提示写明何时该调
+- 字段重命名：`polling.interval_seconds` → `interval_minutes`、`push.persona_timeout_ms` → `persona_timeout_seconds`、`media.image_max_bytes` → `image_max_mib`、`media.file_max_bytes` → `file_max_mib`，时间统一分钟/秒、体积统一 MiB
+- 删除从未生效的 `push.batch_merge`；`config_version` 升至 1.2.0
+- 新增命令 `/测试推送 [编号]`：立刻把某条订阅的最新 3 条推到当前会话，验证源、处理链与推送效果；仅宿主主人可用，不写推送历史、不影响定时轮询
+
+### 迁移提示
+
+重命名后的旧键（`interval_seconds` / `persona_timeout_ms` / `image_max_bytes` / `file_max_bytes`）不再被读取，宿主配置页会显示新字段并填入与旧默认相同的值；旧键留在 `config.toml` 里不生效，可手动删除。如果你改过这些旧键的值，请在新字段上重填。
+
+### Changed
+
+- Configuration is reorganised for readability: sections renamed, every label now carries its unit, descriptions state the consequence, and hints say when to change the value
+- Renamed fields: `polling.interval_seconds` → `interval_minutes`, `push.persona_timeout_ms` → `persona_timeout_seconds`, `media.image_max_bytes` → `image_max_mib`, `media.file_max_bytes` → `file_max_mib`
+- Removed the never-read `push.batch_merge`; `config_version` raised to 1.2.0
+- New command `/测试推送 [编号]` pushes the latest three entries of a subscription into the current chat to verify feed, handler chain, and delivery; owner-only, writes no history, and leaves the schedule untouched
+
+### Migration
+
+Renamed keys are no longer read; the plugin config page shows the new fields with the same defaults. Old keys remain in `config.toml` without effect and can be deleted. If you customised those values, re-enter them on the new fields.
+
 ## [0.2.3] - 2026-11-01
 
 ### 修复
@@ -82,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.3.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.0
 [0.2.3]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.3
 [0.2.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.2
 [0.2.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.1
