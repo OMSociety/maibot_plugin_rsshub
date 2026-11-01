@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-11-01
+
+### 修复
+
+- 推送历史模型缺少 `created_at` / `updated_at` / `completed_at` 字段，WebUI 的概况与历史查询在库里有记录时抛 `'PushHistory' object has no attribute 'created_at'`；补齐字段与行映射，并让概况测试带一条历史记录
+
+### Fixed
+
+- The push history model lacked `created_at`, `updated_at`, and `completed_at`, so the WebUI overview and history queries raised `'PushHistory' object has no attribute 'created_at'` whenever the database had records; the fields and row mapping are now complete, and the overview test inserts a history record
+
 ## [0.2.2] - 2026-11-01
 
 ### 文档
@@ -72,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.2.3]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.3
 [0.2.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.2
 [0.2.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.1
 [0.2.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.0
