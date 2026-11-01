@@ -54,6 +54,7 @@ class Subscription:
     tags: str = ""
     target_session: str | None = None
     platform_name: str | None = None
+    session_label: str = ""
     interval_minutes: int = INHERIT_VALUE
     next_check_at: str | None = None
     notify: int = INHERIT_VALUE
@@ -149,6 +150,7 @@ def sub_from_row(row: Any) -> Subscription:
         tags=row["tags"],
         target_session=row["target_session"],
         platform_name=row["platform_name"],
+        session_label=row["session_label"] or "",
         interval_minutes=row["interval_minutes"],
         next_check_at=row["next_check_at"],
         notify=row["notify"],

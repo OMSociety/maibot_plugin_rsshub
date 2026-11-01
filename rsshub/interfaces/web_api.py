@@ -79,6 +79,7 @@ class WebApiMixin:
                     "title": sub.title or (feed.title if feed else ""),
                     "link": feed.link if feed else "",
                     "session": sub.target_session or "",
+                    "session_label": sub.session_label or sub.target_session or "",
                     "platform": sub.platform_name or "",
                     "push_mode": sub.push_mode,
                     "handlers_mode": sub.handlers_mode,

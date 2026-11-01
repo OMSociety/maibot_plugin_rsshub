@@ -5,29 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RSS 订阅</title>
 <style>
-  /* 只写布局与结构；颜色、字体、边框、阴影、圆角全部交给宿主的 maibot-* 公共样式与变量。 */
+  /* 布局与结构交给这里；颜色、字体、边框、圆角全部来自宿主的 maibot-* 公共样式与变量。 */
   * { box-sizing: border-box; }
-  body {
-    padding: 20px 24px 40px;
-  }
-  .page-note {
-    margin: 0 0 10px;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  .page-title {
-    font-family: var(--maibot-font-display);
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0 0 4px;
-  }
+  body { padding: 20px 24px 40px; }
+  .page-note { margin: 0 0 10px; font-size: 13px; line-height: 1.6; }
+  .page-title { font-family: var(--maibot-font-display); font-size: 18px; font-weight: 600; margin: 0 0 4px; }
   .subtitle { font-size: 12px; margin-bottom: 16px; }
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-    gap: 12px;
-    margin: 16px 0 20px;
-  }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 12px; margin: 16px 0 20px; }
   .stat-label { font-size: 12px; }
   .stat-value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
@@ -37,10 +21,12 @@
   .maibot-table { font-size: 13px; }
   .maibot-table td { vertical-align: top; }
   .maibot-table td:last-child { white-space: nowrap; }
+  .cell-title { max-width: 320px; }
+  .cell-link { display: inline-block; max-width: 100%; overflow-wrap: anywhere; word-break: break-all; }
+  .cell-aux { display: block; margin-top: 2px; font-size: 12px; }
   .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .row-actions .maibot-button { padding: 4px 10px; font-size: 12px; }
-  .maibot-select.compact, .maibot-input.compact { padding: 4px 8px; font-size: 12px; width: auto; }
-  .maibot-input.compact { width: 72px; }
+  .maibot-input.compact { padding: 4px 8px; font-size: 12px; width: 72px; }
   .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   .banner { margin: 8px 0 16px; padding: 10px 14px; font-size: 13px; }
   .banner.error { color: var(--maibot-danger); }
@@ -51,6 +37,10 @@
   textarea.maibot-input { width: 100%; min-height: 140px; font: inherit; font-size: 13px; resize: vertical; }
   .badge-retry { margin-left: 6px; }
   .hidden { display: none !important; }
+  .empty { padding: 24px 16px; text-align: center; }
+  .empty p { margin: 6px 0; }
+  .empty .empty-title { font-size: 15px; font-weight: 600; }
+  .loading { padding: 14px 12px; }
 </style>
 </head>
 <body class="maibot-page">
@@ -77,7 +67,7 @@
     <div class="table-wrap">
       <table class="maibot-table">
         <thead><tr><th>订阅</th><th>会话</th><th>推送模式</th><th>间隔（分钟）</th><th>下次抓取</th><th>操作</th></tr></thead>
-        <tbody id="subs-body"><tr><td colspan="6" class="maibot-muted">加载中…</td></tr></tbody>
+        <tbody id="subs-body"><tr><td colspan="6" class="maibot-muted loading">加载中…</td></tr></tbody>
       </table>
     </div>
     <div class="pager">
@@ -89,6 +79,7 @@
 
   <section id="view-history" class="hidden">
     <div class="toolbar">
+      <label class="maibot-muted" for="history-status">状态</label>
       <select class="maibot-select" id="history-status" aria-label="状态筛选">
         <option value="">全部状态</option>
         <option value="success">成功</option>
@@ -101,7 +92,7 @@
     <div class="table-wrap">
       <table class="maibot-table">
         <thead><tr><th>时间</th><th>条目</th><th>来源</th><th>会话</th><th>状态</th></tr></thead>
-        <tbody id="history-body"><tr><td colspan="5" class="maibot-muted">加载中…</td></tr></tbody>
+        <tbody id="history-body"><tr><td colspan="5" class="maibot-muted loading">加载中…</td></tr></tbody>
       </table>
     </div>
     <div class="pager">
@@ -157,9 +148,18 @@
     }
 
     function link(href, label) {
-      const a = el('a', { href: href || '#', target: '_blank', rel: 'noreferrer noopener' });
+      const a = el('a', { class: 'cell-link', href: href || '#', target: '_blank', rel: 'noreferrer noopener' });
       a.textContent = label;
       return a;
+    }
+
+    function emptyRow(colspan, title, hint) {
+      return el('tr', {}, [el('td', { colspan: String(colspan) }, [
+        el('div', { class: 'empty maibot-muted' }, [
+          el('p', { class: 'empty-title', text: title }),
+          el('p', { text: hint }),
+        ]),
+      ])]);
     }
 
     function renderOverview(data) {
@@ -186,10 +186,17 @@
         state.subs.page = data.page; state.subs.pages = data.pages;
         $('subs-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
         const body = $('subs-body');
-        if (!data.items.length) { body.replaceChildren(el('tr', {}, [el('td', { colspan: '6', class: 'maibot-muted', text: '暂无订阅' })])); return; }
+        if (!data.items.length) {
+          body.replaceChildren(emptyRow(6, state.subs.keyword ? '没有匹配的订阅' : '还没有订阅', state.subs.keyword ? '换个关键词试试' : '用 /订阅 <地址> 添加，或到「批量导入」里一次加多个'));
+          return;
+        }
         body.replaceChildren(...data.items.map((item) => {
-          const title = el('td', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
-          const session = el('td', {}, [el('span', { class: 'maibot-muted', text: item.session || '未绑定' })]);
+          const titleText = item.title || item.link || `#${item.id}`;
+          const title = el('td', { class: 'cell-title' }, [link(item.link, titleText)]);
+          const session = el('td', {}, [el('span', {
+            class: 'maibot-muted', text: item.session_label || item.session || '未绑定',
+            title: item.session || '',
+          })]);
           const mode = el('td', {}, [modeSelect(item)]);
           const interval = el('td', {}, [intervalInput(item)]);
           const next = el('td', {}, [el('span', { class: 'maibot-muted', text: item.next_check_at ? item.next_check_at.replace('T', ' ').slice(0, 19) : '—' })]);
@@ -213,7 +220,7 @@
     }
 
     function modeSelect(item) {
-      const select = el('select', { class: 'maibot-select compact' });
+      const select = el('select', { class: 'maibot-select compact', 'aria-label': '推送模式' });
       for (const [value, label] of [['inherit', '继承'], ['persona', '人格化'], ['direct', '直推'], ['silent', '静默']]) {
         const option = el('option', { value });
         option.textContent = label;
@@ -225,7 +232,7 @@
     }
 
     function intervalInput(item) {
-      const input = el('input', { class: 'maibot-input compact', type: 'number', min: '1', max: '1440' });
+      const input = el('input', { class: 'maibot-input compact', type: 'number', min: '1', max: '1440', 'aria-label': '轮询间隔（分钟）' });
       input.value = item.interval_minutes > 0 ? String(item.interval_minutes) : '';
       input.placeholder = '继承';
       const commit = () => {
@@ -276,13 +283,19 @@
         state.history.page = data.page; state.history.pages = data.pages;
         $('history-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
         const body = $('history-body');
-        if (!data.items.length) { body.replaceChildren(el('tr', {}, [el('td', { colspan: '5', class: 'maibot-muted', text: '暂无记录' })])); return; }
+        if (!data.items.length) {
+          body.replaceChildren(emptyRow(5, '还没有推送记录', '有订阅并抓到新条目后，这里会列出每一次推送与失败原因'));
+          return;
+        }
         body.replaceChildren(...data.items.map((item) => {
           const when = el('td', {}, [el('span', { class: 'maibot-muted', text: (item.created_at || '').replace('T', ' ').slice(0, 19) })]);
-          const entry = el('td', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
-          if (item.fail_reason) entry.append(el('div', { class: 'maibot-muted', text: item.fail_reason }));
+          const entry = el('td', { class: 'cell-title' }, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          if (item.fail_reason) entry.append(el('div', { class: 'maibot-muted cell-aux', text: item.fail_reason }));
           const source = el('td', {}, [el('span', { class: 'maibot-muted', text: item.feed_title || '—' })]);
-          const session = el('td', {}, [el('span', { class: 'maibot-muted', text: item.session || '—' })]);
+          const session = el('td', {}, [el('span', {
+            class: 'maibot-muted', text: item.session_label || item.session || '—',
+            title: item.session || '',
+          })]);
           const status = el('td', {}, [el('span', { class: 'maibot-badge', text: item.status || '—' })]);
           if (item.retry_count) status.append(el('span', { class: 'maibot-muted badge-retry', text: `×${item.retry_count}` }));
           return el('tr', {}, [when, entry, source, session, status]);
@@ -291,7 +304,7 @@
     }
 
     function switchView(view) {
-      for (const tab of document.querySelectorAll('.tab, .tabs .maibot-button')) {
+      for (const tab of document.querySelectorAll('.tabs .maibot-button')) {
         const active = tab.dataset.view === view;
         tab.setAttribute('aria-selected', String(active));
         tab.setAttribute('aria-pressed', String(active));
@@ -305,7 +318,8 @@
     document.querySelectorAll('.tabs .maibot-button').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
     $('keyword').addEventListener('change', () => { state.subs.keyword = $('keyword').value.trim(); loadSubs(1); });
     $('reload-subs').addEventListener('click', () => { loadOverview(); loadSubs(); });
-    $('reload-history').addEventListener('click', () => { state.history.status = $('history-status').value; loadHistory(1); });
+    $('history-status').addEventListener('change', () => { state.history.status = $('history-status').value; loadHistory(1); });
+    $('reload-history').addEventListener('click', () => loadHistory(1));
     $('subs-prev').addEventListener('click', () => { if (state.subs.page > 1) loadSubs(state.subs.page - 1); });
     $('subs-next').addEventListener('click', () => { if (state.subs.page < state.subs.pages) loadSubs(state.subs.page + 1); });
     $('history-prev').addEventListener('click', () => { if (state.history.page > 1) loadHistory(state.history.page - 1); });

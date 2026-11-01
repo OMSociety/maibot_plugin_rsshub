@@ -85,6 +85,7 @@ class RssToolsMixin:
                 raw_link=link,
                 stream_id=stream_id,
                 platform=str(kwargs.get("platform") or ""),
+                group_id=str(kwargs.get("group_id") or ""),
                 title=title.strip(),
                 tags=tags.strip(),
             )

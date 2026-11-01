@@ -46,6 +46,7 @@ _SUB_COLUMNS = frozenset(
         "tags",
         "target_session",
         "platform_name",
+        "session_label",
         "interval_minutes",
         "next_check_at",
         "notify",
@@ -167,10 +168,10 @@ class SubscriptionRepository:
         now = utcnow()
         if sub.id is None:
             sub.id = self._db.execute(
-                "INSERT INTO rsshub_subs(user_id, feed_id, title, tags, target_session, platform_name, "
+                "INSERT INTO rsshub_subs(user_id, feed_id, title, tags, target_session, platform_name, session_label, "
                 "interval_minutes, next_check_at, notify, push_mode, handlers_mode, handlers, "
                 "length_limit, display_author, display_via, display_title, display_entry_tags, style, display_media, "
-                "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     sub.user_id,
                     sub.feed_id,
@@ -178,6 +179,7 @@ class SubscriptionRepository:
                     sub.tags,
                     sub.target_session,
                     sub.platform_name,
+                    sub.session_label,
                     sub.interval_minutes,
                     sub.next_check_at,
                     sub.notify,
@@ -197,8 +199,9 @@ class SubscriptionRepository:
             )
         else:
             self._db.execute(
-                "UPDATE rsshub_subs SET title=?, tags=?, target_session=?, platform_name=?, interval_minutes=?, "
-                "next_check_at=?, notify=?, push_mode=?, handlers_mode=?, handlers=?, length_limit=?, "
+                "UPDATE rsshub_subs SET title=?, tags=?, target_session=?, platform_name=?, "
+                "session_label=?, interval_minutes=?, next_check_at=?, notify=?, push_mode=?, "
+                "handlers_mode=?, handlers=?, length_limit=?, "
                 "display_author=?, display_via=?, display_title=?, display_entry_tags=?, style=?, display_media=?, "
                 "updated_at=? WHERE id=?",
                 (
@@ -206,6 +209,7 @@ class SubscriptionRepository:
                     sub.tags,
                     sub.target_session,
                     sub.platform_name,
+                    sub.session_label,
                     sub.interval_minutes,
                     sub.next_check_at,
                     sub.notify,

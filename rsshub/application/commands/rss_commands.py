@@ -49,6 +49,7 @@ class RssCommandsMixin:
                 raw_link=link,
                 stream_id=stream_id,
                 platform=str(kwargs.get("platform") or ""),
+                group_id=str(kwargs.get("group_id") or ""),
                 title=title,
             )
         except RsshubError as exc:

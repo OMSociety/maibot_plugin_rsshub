@@ -10,6 +10,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-02
+
+### 变更
+
+- 订阅表的会话标签改为可读形式：`QQ群:945523689` / `QQ私聊:945523689`（按平台映射 QQ/微信/Telegram 等），不再直接显示内部 stream_id；订阅表新增 `session_label` 列，数据库迁移到 v2
+- WebUI 页面整体修缮：订阅与历史页改用宿主原生 `maibot-select`（不再自绘下拉），空列表与空历史给专门提示，链接单元格可折行，标题与说明不再重复
+
+### 迁移提示
+
+升级后老订阅的会话标签仍是原 stream_id，之后新建的订阅会带上 `QQ群:…` 形式；不影响推送行为。
+
+### Changed
+
+- Subscription session labels now read as `QQ群:945523689` / `QQ私聊:945523689` (platform names mapped) instead of the opaque stream id; a `session_label` column was added and the database migrated to v2
+- The WebUI page was polished: native `maibot-select` dropdowns replace the custom widget, empty lists get proper placeholders, long links wrap, and duplicated titles are gone
+
+### Migration
+
+Older subscriptions keep their previous label; subscriptions created from now on carry the readable form. Delivery is unaffected.
+
 ## [0.3.2] - 2026-11-01
 
 ### 新增
@@ -138,6 +158,7 @@ Renamed keys are no longer read; the plugin config page shows the new fields wit
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.4.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.4.0
 [0.3.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.2
 [0.3.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.0

@@ -30,6 +30,33 @@ SUB_OPTION_KEYS = frozenset(
 )
 
 
+def _session_label(platform: str, user_id: str, group_id: str, stream_id: str) -> str:
+    """给订阅表生成可读的会话标识：平台名 + 群/私聊 + ID。
+
+    例如 ``QQ群:945523689`` / ``QQ私聊:945523689``；宿主传的 stream_id 是内部哈希，
+    人看不出是哪个会话，这里按调用现场的平台、群号、用户号拼一个稳定标签，拿不到
+    平台信息就退回原 stream_id。
+    """
+    name = _PLATFORM_NAMES.get(platform.strip().lower(), platform.strip())
+    if not platform.strip():
+        return stream_id
+    if group_id.strip():
+        return f"{name}群:{group_id.strip()}"
+    if user_id.strip():
+        return f"{name}私聊:{user_id.strip()}"
+    return f"{name}:{stream_id}"
+
+
+_PLATFORM_NAMES = {
+    "qq": "QQ",
+    "qq_official": "QQ官方",
+    "wechat": "微信",
+    "weixin": "微信",
+    "telegram": "Telegram",
+    "discord": "Discord",
+}
+
+
 class SubscriptionService:
     """订阅与用户设置的业务操作。"""
 
@@ -48,6 +75,7 @@ class SubscriptionService:
         raw_link: str,
         stream_id: str,
         platform: str = "",
+        group_id: str = "",
         title: str = "",
         tags: str = "",
     ) -> tuple[Subscription, bool]:
@@ -77,6 +105,7 @@ class SubscriptionService:
             tags=tags,
             target_session=stream_id,
             platform_name=platform,
+            session_label=_session_label(platform, user_id, group_id, stream_id),
         )
         sub = self._store.repos.subs.save(sub)
         return sub, created_feed

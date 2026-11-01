@@ -16,7 +16,7 @@ from ...errors import RsshubError
 INHERIT_VALUE = -100
 INHERIT_MODE = "inherit"
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 _DDL_V1 = """
 CREATE TABLE IF NOT EXISTS rsshub_users (
@@ -132,6 +132,17 @@ def utcnow() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+_DDL_V2 = """
+ALTER TABLE rsshub_subs ADD COLUMN session_label TEXT;
+"""
+
+# 版本化迁移：新库按顺序执行，老库只补未应用的步骤。
+_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("1", _DDL_V1, "初始表结构"),
+    ("2", _DDL_V2, "订阅表增加会话显示名"),
+)
+
+
 class Database:
     """SQLite 连接封装。
 
@@ -170,7 +181,7 @@ class Database:
             self._conn = None
 
     def migrate(self) -> None:
-        """执行未应用的迁移。"""
+        """按版本顺序执行未应用的迁移。"""
         self.connect()
         conn = self.conn
         conn.executescript(
@@ -179,11 +190,13 @@ class Database:
             "description TEXT NOT NULL DEFAULT '')"
         )
         applied = {row["version"] for row in conn.execute("SELECT version FROM rsshub_schema_migrations")}
-        if SCHEMA_VERSION not in applied:
-            conn.executescript(_DDL_V1)
+        for version, script, description in _MIGRATIONS:
+            if version in applied:
+                continue
+            conn.executescript(script)
             conn.execute(
                 "INSERT INTO rsshub_schema_migrations(version, applied_at, description) VALUES (?,?,?)",
-                (SCHEMA_VERSION, utcnow(), "初始表结构"),
+                (version, utcnow(), description),
             )
             conn.commit()
 
