@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "omsociety.rsshub",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "name": "RSSHub 订阅推送",
   "description": "RSS/Atom/JSON Feed 订阅、定时轮询与人格化推送，支持三级配置继承、推送历史审计与富媒体渲染",
   "author": {

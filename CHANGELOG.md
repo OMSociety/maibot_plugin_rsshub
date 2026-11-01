@@ -10,6 +10,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-01
+
+### 变更
+
+- 命令 id 统一为 `rss_sub` / `rss_unsub` / `rss_list` / `rss_status` / `rss_help` / `rss_test`（原 `rss_sub_list` / `rss_sub_status` / `rss_test_push` 改名）
+- 每个命令同时接受中文与英文写法：`/订阅`｜`/退订`｜`/列表`｜`/状态`｜`/帮助`｜`/测试推送`（或 `/sub_test`），`/rsshelp` 帮助文本同步
+- `/测试推送` 的单命令授权路径随之变为 `omsociety.rsshub.rss_test`
+
+### Changed
+
+- Command ids normalised to `rss_sub` / `rss_unsub` / `rss_list` / `rss_status` / `rss_help` / `rss_test`
+- Every command accepts both Chinese and English forms: `/订阅`, `/退订`, `/列表`, `/状态`, `/帮助`, `/测试推送` (or `/sub_test`)
+- The per-command permission key for the test push is now `omsociety.rsshub.rss_test`
+
 ## [0.3.0] - 2026-11-01
 
 ### 变更
@@ -106,6 +120,7 @@ Renamed keys are no longer read; the plugin config page shows the new fields wit
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.3.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.1
 [0.3.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.3.0
 [0.2.3]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.3
 [0.2.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.2
