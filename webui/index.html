@@ -7,26 +7,37 @@
 <style>
   /* 布局与结构交给这里；颜色、字体、边框、圆角全部来自宿主的 maibot-* 公共样式与变量。 */
   * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body { padding: 20px 24px 40px; }
   .page-note { margin: 0 0 10px; font-size: 13px; line-height: 1.6; }
   .page-title { font-family: var(--maibot-font-display); font-size: 18px; font-weight: 600; margin: 0 0 4px; }
   .subtitle { font-size: 12px; margin-bottom: 16px; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 20px; }
   .stat-label { font-size: 12px; }
   .stat-value { font-size: 22px; font-weight: 600; margin-top: 4px; }
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
   .toolbar .maibot-input { width: 240px; max-width: 100%; }
-  .table-wrap { overflow-x: auto; }
-  .maibot-table { font-size: 13px; }
-  .maibot-table td { vertical-align: top; }
-  .maibot-table td:last-child { white-space: nowrap; }
-  .cell-title { max-width: 320px; }
-  .cell-link { display: inline-block; max-width: 100%; overflow-wrap: anywhere; word-break: break-all; }
-  .cell-aux { display: block; margin-top: 2px; font-size: 12px; }
-  .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .row-actions .maibot-button { padding: 4px 10px; font-size: 12px; }
-  .maibot-input.compact { padding: 4px 8px; font-size: 12px; width: 72px; }
+  .cards-list { display: grid; gap: 12px; }
+  .sub-card { padding: 14px 16px; }
+  .sub-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .sub-title { min-width: 0; flex: 1 1 260px; }
+  .sub-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sub-actions .maibot-button { padding: 6px 12px; font-size: 12px; }
+  .sub-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 13px; }
+  .meta-item { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .meta-item .maibot-muted { flex: 0 0 auto; }
+  .meta-item select.maibot-select, .meta-item input.maibot-input { padding: 5px 10px; font-size: 13px; }
+  .meta-item select.maibot-select { min-width: 96px; }
+  .meta-item input.maibot-input { width: 88px; }
+  .cell-link { display: inline-block; max-width: 100%; overflow-wrap: anywhere; word-break: break-all; color: var(--maibot-primary); text-decoration: none; }
+  .cell-link:hover { text-decoration: underline; }
+  .sub-title .cell-link { font-weight: 600; }
+  .history-list { display: grid; gap: 10px; }
+  .history-card { padding: 12px 14px; font-size: 13px; }
+  .history-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .history-body { display: grid; gap: 4px; }
+  .history-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; }
   .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
   .banner { margin: 8px 0 16px; padding: 10px 14px; font-size: 13px; }
   .banner.error { color: var(--maibot-danger); }
@@ -41,6 +52,14 @@
   .empty p { margin: 6px 0; }
   .empty .empty-title { font-size: 15px; font-weight: 600; }
   .loading { padding: 14px 12px; }
+
+  @media (max-width: 640px) {
+    body { padding: 14px 14px 28px; }
+    .sub-head { flex-direction: column; align-items: stretch; }
+    .sub-title { flex: 0 0 auto; }
+    .sub-actions { justify-content: flex-start; }
+    .toolbar .maibot-input { width: 100%; }
+  }
 </style>
 </head>
 <body class="maibot-page">
@@ -64,12 +83,7 @@
       <input class="maibot-input" id="keyword" placeholder="按标题、链接或会话筛选" aria-label="筛选订阅">
       <button class="maibot-button" id="reload-subs">刷新</button>
     </div>
-    <div class="table-wrap">
-      <table class="maibot-table">
-        <thead><tr><th>订阅</th><th>会话</th><th>推送模式</th><th>间隔（分钟）</th><th>下次抓取</th><th>操作</th></tr></thead>
-        <tbody id="subs-body"><tr><td colspan="6" class="maibot-muted loading">加载中…</td></tr></tbody>
-      </table>
-    </div>
+    <div class="cards-list" id="subs-body"><div class="maibot-muted loading">加载中…</div></div>
     <div class="pager">
       <button class="maibot-button" id="subs-prev">上一页</button>
       <span class="maibot-muted" id="subs-page">1 / 1</span>
@@ -89,12 +103,7 @@
       </select>
       <button class="maibot-button" id="reload-history">刷新</button>
     </div>
-    <div class="table-wrap">
-      <table class="maibot-table">
-        <thead><tr><th>时间</th><th>条目</th><th>来源</th><th>会话</th><th>状态</th></tr></thead>
-        <tbody id="history-body"><tr><td colspan="5" class="maibot-muted loading">加载中…</td></tr></tbody>
-      </table>
-    </div>
+    <div class="history-list" id="history-body"><div class="maibot-muted loading">加载中…</div></div>
     <div class="pager">
       <button class="maibot-button" id="history-prev">上一页</button>
       <span class="maibot-muted" id="history-page">1 / 1</span>
@@ -153,13 +162,11 @@
       return a;
     }
 
-    function emptyRow(colspan, title, hint) {
-      return el('tr', {}, [el('td', { colspan: String(colspan) }, [
-        el('div', { class: 'empty maibot-muted' }, [
-          el('p', { class: 'empty-title', text: title }),
-          el('p', { text: hint }),
-        ]),
-      ])]);
+    function emptyBlock(title, hint) {
+      return el('div', { class: 'empty maibot-card maibot-muted' }, [
+        el('p', { class: 'empty-title', text: title }),
+        el('p', { text: hint }),
+      ]);
     }
 
     function renderOverview(data) {
@@ -187,27 +194,40 @@
         $('subs-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
         const body = $('subs-body');
         if (!data.items.length) {
-          body.replaceChildren(emptyRow(6, state.subs.keyword ? '没有匹配的订阅' : '还没有订阅', state.subs.keyword ? '换个关键词试试' : '用 /订阅 <地址> 添加，或到「批量导入」里一次加多个'));
+          body.replaceChildren(emptyBlock(state.subs.keyword ? '没有匹配的订阅' : '还没有订阅', state.subs.keyword ? '换个关键词试试' : '用 /订阅 <地址> 添加，或到「批量导入」里一次加多个'));
           return;
         }
         body.replaceChildren(...data.items.map((item) => {
-          const titleText = item.title || item.link || `#${item.id}`;
-          const title = el('td', { class: 'cell-title' }, [link(item.link, titleText)]);
-          const session = el('td', {}, [el('span', {
-            class: 'maibot-muted', text: item.session_label || item.session || '未绑定',
-            title: item.session || '',
-          })]);
-          const mode = el('td', {}, [modeSelect(item)]);
-          const interval = el('td', {}, [intervalInput(item)]);
-          const next = el('td', {}, [el('span', { class: 'maibot-muted', text: item.next_check_at ? item.next_check_at.replace('T', ' ').slice(0, 19) : '—' })]);
-          const ops = el('td', {}, [
-            el('div', { class: 'row-actions' }, [
-              button('立即抓取', () => pollNow(item.id)),
-              button(item.state ? '停用' : '启用', () => setState(item.id, !item.state)),
-              button('删除', () => deleteSub(item.id), 'maibot-button-danger'),
-            ]),
+          const card = el('article', { class: 'sub-card maibot-card' });
+          const head = el('div', { class: 'sub-head' });
+          const title = el('div', { class: 'sub-title' }, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          const actions = el('div', { class: 'sub-actions' }, [
+            button('立即抓取', () => pollNow(item.id)),
+            button(item.state ? '停用' : '启用', () => setState(item.id, !item.state)),
+            button('删除', () => deleteSub(item.id), 'maibot-button-danger'),
           ]);
-          return el('tr', {}, [title, session, mode, interval, next, ops]);
+          head.append(title, actions);
+
+          const meta = el('div', { class: 'sub-meta' });
+          const session = el('div', { class: 'meta-item' }, [
+            el('span', { class: 'maibot-muted', text: '会话' }),
+            el('span', { class: 'maibot-muted', text: item.session_label || item.session || '未绑定', title: item.session || '' }),
+          ]);
+          const mode = el('div', { class: 'meta-item' }, [
+            el('span', { class: 'maibot-muted', text: '推送模式' }),
+            modeSelect(item),
+          ]);
+          const interval = el('div', { class: 'meta-item' }, [
+            el('span', { class: 'maibot-muted', text: '间隔（分钟）' }),
+            intervalInput(item),
+          ]);
+          const next = el('div', { class: 'meta-item' }, [
+            el('span', { class: 'maibot-muted', text: '下次抓取' }),
+            el('span', { class: 'maibot-muted', text: item.next_check_at ? item.next_check_at.replace('T', ' ').slice(0, 19) : '—' }),
+          ]);
+          meta.append(session, mode, interval, next);
+          card.append(head, meta);
+          return card;
         }));
       } catch (error) { fail(error); }
     }
@@ -220,7 +240,7 @@
     }
 
     function modeSelect(item) {
-      const select = el('select', { class: 'maibot-select compact', 'aria-label': '推送模式' });
+      const select = el('select', { class: 'maibot-select', 'aria-label': '推送模式' });
       for (const [value, label] of [['inherit', '继承'], ['persona', '人格化'], ['direct', '直推'], ['silent', '静默']]) {
         const option = el('option', { value });
         option.textContent = label;
@@ -232,7 +252,7 @@
     }
 
     function intervalInput(item) {
-      const input = el('input', { class: 'maibot-input compact', type: 'number', min: '1', max: '1440', 'aria-label': '轮询间隔（分钟）' });
+      const input = el('input', { class: 'maibot-input', type: 'number', min: '1', max: '1440', 'aria-label': '轮询间隔（分钟）' });
       input.value = item.interval_minutes > 0 ? String(item.interval_minutes) : '';
       input.placeholder = '继承';
       const commit = () => {
@@ -284,21 +304,24 @@
         $('history-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
         const body = $('history-body');
         if (!data.items.length) {
-          body.replaceChildren(emptyRow(5, '还没有推送记录', '有订阅并抓到新条目后，这里会列出每一次推送与失败原因'));
+          body.replaceChildren(emptyBlock('还没有推送记录', '有订阅并抓到新条目后，这里会列出每一次推送与失败原因'));
           return;
         }
         body.replaceChildren(...data.items.map((item) => {
-          const when = el('td', {}, [el('span', { class: 'maibot-muted', text: (item.created_at || '').replace('T', ' ').slice(0, 19) })]);
-          const entry = el('td', { class: 'cell-title' }, [link(item.link, item.title || item.link || `#${item.id}`)]);
-          if (item.fail_reason) entry.append(el('div', { class: 'maibot-muted cell-aux', text: item.fail_reason }));
-          const source = el('td', {}, [el('span', { class: 'maibot-muted', text: item.feed_title || '—' })]);
-          const session = el('td', {}, [el('span', {
-            class: 'maibot-muted', text: item.session_label || item.session || '—',
-            title: item.session || '',
-          })]);
-          const status = el('td', {}, [el('span', { class: 'maibot-badge', text: item.status || '—' })]);
-          if (item.retry_count) status.append(el('span', { class: 'maibot-muted badge-retry', text: `×${item.retry_count}` }));
-          return el('tr', {}, [when, entry, source, session, status]);
+          const card = el('article', { class: 'history-card maibot-card' });
+          const head = el('div', { class: 'history-head' }, [
+            el('span', { class: 'maibot-muted', text: (item.created_at || '').replace('T', ' ').slice(0, 19) }),
+            el('span', { class: 'maibot-badge', text: item.status || '—' }),
+          ]);
+          const title = el('div', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          if (item.fail_reason) title.append(el('div', { class: 'maibot-muted', text: item.fail_reason }));
+          const meta = el('div', { class: 'history-meta maibot-muted' }, [
+            el('span', { text: `来源 ${item.feed_title || '—'}` }),
+            el('span', { text: `会话 ${item.session_label || item.session || '—'}`, title: item.session || '' }),
+            item.retry_count ? el('span', { text: `重试 ×${item.retry_count}` }) : '',
+          ].filter(Boolean));
+          card.append(head, el('div', { class: 'history-body' }, [title, meta]));
+          return card;
         }));
       } catch (error) { fail(error); }
     }
