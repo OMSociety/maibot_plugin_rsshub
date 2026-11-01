@@ -10,6 +10,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-11-01
+
+### 文档
+
+- README 顶部说明宿主「设置 → 能力 → 文件功能」开关何时需要打开：工具推送音视频原件需要它，定时推送无论开关如何都附链接
+- WebUI 管理页标题下加一行提示，插件配置里「发送音视频文件」的说明同步标注该前提
+
+### Docs
+
+- README now explains when the host "Settings → Capabilities → File capabilities" switch is required: tool pushes need it, scheduled pushes always fall back to links
+- The WebUI page shows the same prerequisite under its title, and the media option description mentions it
+
 ## [0.2.1] - 2026-11-01
 
 ### 修复
@@ -60,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.2.2]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.2
 [0.2.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.1
 [0.2.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.0
 [0.1.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.1.0
