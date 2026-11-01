@@ -113,7 +113,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
 | `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值；重命名字段后旧键仍留在文件里但不生效 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |
-| `commands/rss_commands.py` 的 `/测试推送` | 宿主不强制命令权限，`.is_local_operator` 判断是唯一闸门，且测试推送会真的往当前会话发消息 | 改这个命令时保留主人校验，预览路径必须 `record=False` |
+| `commands/rss_commands.py` 的 `/测试推送` | 权限由宿主按 `@Command(permission="operator")` 校验（`[plugin] permission` 或被单命令放行），且测试推送会真的往当前会话发消息 | 改这个命令时保留 `permission="operator"`，预览路径必须 `record=False` |
 | 部署目录 | 宿主插件目录名是 `omsociety_rsshub`，包名是 `rsshub` | 同步时拷目录内容，不要为了对齐去改包名 |
 
 ## 出错怎么办

@@ -111,17 +111,14 @@ class RssCommandsMixin:
         "rss_test_push",
         description="立即把某条订阅的最新内容推送到当前会话，用于验证源、处理链与推送效果",
         pattern=r"^/(?:测试推送|rss_test)(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$",
+        permission="operator",
     )
     async def handle_test_push(
         self,
         stream_id: str = "",
         matched_groups: dict | None = None,
-        is_local_operator: bool = False,
         **kwargs: Any,
     ) -> tuple:
-        if not is_local_operator:
-            await self._reply(stream_id, "测试推送只对宿主主人开放：它会把内容真的发到当前会话")
-            return True, "无权限", True
         raw_id = str((matched_groups or {}).get("sub_id") or "").strip()
         subs = self.store.repos.subs.list_by_session(stream_id)
         if not subs:

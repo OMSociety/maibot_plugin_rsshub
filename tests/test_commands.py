@@ -116,14 +116,10 @@ async def test_test_push_sends_latest_entries_without_history(harness: Harness) 
     assert harness.store.repos.history.list_by_session("s1") == []
 
 
-@pytest.mark.asyncio
-async def test_test_push_requires_operator(harness: Harness) -> None:
-    await harness.handle_sub(stream_id="s1", matched_groups={"link": "https://example.com/feed.xml"}, user_id="u1")
+def test_test_push_declares_operator_permission() -> None:
+    info = RssCommandsMixin.handle_test_push.__maibot_component_info__
 
-    await harness.handle_test_push(stream_id="s1", is_local_operator=False)
-
-    assert "只对宿主主人开放" in harness.ctx.send.sent[-1][1]
-    assert harness.store.repos.history.list_by_session("s1") == []
+    assert info.metadata.get("permission") == "operator"
 
 
 @pytest.mark.asyncio
