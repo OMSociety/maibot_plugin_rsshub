@@ -47,6 +47,10 @@
   .form-row .maibot-input { flex: 1; min-width: 180px; }
   textarea.maibot-input { width: 100%; min-height: 140px; font: inherit; font-size: 13px; resize: vertical; }
   .badge-retry { margin-left: 6px; }
+  /* 宿主公共类只覆盖关闭态控件，展开列表与悬停态在这里补齐，颜色仍全部走宿主变量。 */
+  .maibot-button:hover { filter: brightness(1.15); }
+  .maibot-button:active { filter: brightness(0.92); }
+  .maibot-select option { background: var(--maibot-surface); color: var(--maibot-foreground); }
   .hidden { display: none !important; }
   .empty { padding: 24px 16px; text-align: center; }
   .empty p { margin: 6px 0; }
