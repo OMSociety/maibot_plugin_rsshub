@@ -312,7 +312,7 @@ class RssToolsMixin:
             self.ctx,
             client,
             max_files=int(media.max_files),
-            max_bytes=int(media.file_max_bytes),
+            max_bytes=int(media.file_max_mib) * 1024 * 1024,
         )
         return await attachments.deliver(links, Path(self.ctx.paths.runtime_dir) / "rsshub-media")
 

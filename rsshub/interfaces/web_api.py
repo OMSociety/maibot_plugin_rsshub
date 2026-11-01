@@ -48,7 +48,7 @@ class WebApiMixin:
             "pushes_24h": len(today),
             "failures_24h": len(failures),
             "pending_retry": len(self.store.repos.history.list_retryable(500)),
-            "poll_interval_minutes": int(self.config.polling.interval_seconds) // 60,
+            "poll_interval_minutes": int(self.config.polling.interval_minutes),
             "default_push_mode": str(self.config.push.default_mode),
             "handlers": list(HANDLERS),
         }

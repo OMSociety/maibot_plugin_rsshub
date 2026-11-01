@@ -30,7 +30,7 @@ class PollOutcome:
 
 def build_defaults(config: Any) -> GlobalDefaults:
     return GlobalDefaults(
-        interval_seconds=int(config.polling.interval_seconds),
+        interval_seconds=int(config.polling.interval_minutes) * 60,
         default_push_mode=str(config.push.default_mode),
     )
 

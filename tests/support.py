@@ -153,7 +153,7 @@ def make_config(**overrides: object) -> SimpleNamespace:
     config = SimpleNamespace(
         plugin=SimpleNamespace(enabled=True, config_version="1.0.0"),
         polling=SimpleNamespace(
-            interval_seconds=600,
+            interval_minutes=10,
             concurrency=3,
             request_timeout=15.0,
             max_entries_per_poll=3,
@@ -163,20 +163,19 @@ def make_config(**overrides: object) -> SimpleNamespace:
         push=SimpleNamespace(
             default_mode="persona",
             persona_fallback_to_direct=True,
-            persona_timeout_ms=5000,
+            persona_timeout_seconds=5,
             max_reference_chars=2000,
-            batch_merge=True,
         ),
         persona=SimpleNamespace(format_instruction="随口分享"),
         silent=SimpleNamespace(proactive_trigger=False),
         media=SimpleNamespace(
             max_images=3,
-            image_max_bytes=1048576,
+            image_max_mib=1,
             table_render_enabled=True,
             multi_image_forward=True,
             attach_files=True,
             max_files=2,
-            file_max_bytes=20971520,
+            file_max_mib=20,
         ),
         rsshub=SimpleNamespace(base_url="https://rsshub.app"),
     )

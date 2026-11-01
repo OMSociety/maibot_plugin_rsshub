@@ -44,123 +44,137 @@ class PluginSection(PluginConfigBase):
 
     enabled: bool = Field(default=True, description="是否启用插件")
     config_version: str = Field(
-        default="1.1.0",
+        default="1.2.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
 
 
 class PollingSection(PluginConfigBase):
-    """RSS 轮询调度。"""
+    """抓取节奏：多久抓一次、一次抓几个源、单源最多推几条。"""
 
-    __ui_label__ = "轮询调度"
+    __ui_label__ = "抓取与轮询"
+    __ui_icon__ = "refresh-cw"
     __ui_order__ = 1
 
-    interval_seconds: int = Field(
-        default=600,
-        ge=60,
-        le=86400,
-        description="全局轮询间隔（秒）",
-        json_schema_extra={"label": "轮询间隔", "hint": "所有订阅源共用；单源间隔在订阅配置中覆盖"},
+    interval_minutes: int = Field(
+        default=10,
+        ge=1,
+        le=1440,
+        description="所有订阅源默认多久抓取一次，单位分钟",
+        json_schema_extra={
+            "label": "全局轮询间隔（分钟）",
+            "hint": "订阅级 interval 会覆盖它；间隔越短越及时，但更容易被站点限流",
+        },
     )
     concurrency: int = Field(
         default=5,
         ge=1,
         le=20,
-        description="同时抓取的订阅源数量上限",
-        json_schema_extra={"label": "抓取并发数"},
+        description="同一轮里同时抓取的订阅源数量",
+        json_schema_extra={"label": "同时抓取几个源", "hint": "源多时适当调大；被限流就调小"},
     )
     request_timeout: float = Field(
         default=30.0,
         ge=5.0,
         le=120.0,
-        description="单个订阅源 HTTP 请求超时（秒）",
-        json_schema_extra={"label": "请求超时"},
+        description="单个订阅源一次请求的超时秒数",
+        json_schema_extra={"label": "单源请求超时（秒）", "hint": "慢源经常超时就调大，如 60"},
     )
     max_entries_per_poll: int = Field(
         default=5,
         ge=1,
         le=50,
-        description="单次轮询每个订阅源最多推送的新条目数",
-        json_schema_extra={"label": "单轮推送上限", "hint": "超出部分丢弃，防止刷屏"},
+        description="每个订阅源一轮最多推送的新条目数",
+        json_schema_extra={
+            "label": "每源每轮最多推送几条",
+            "hint": "超出部分本轮丢弃且不补推，只防刷屏用；想一条不落就调到 50",
+        },
     )
     user_agent: str = Field(
-        default="maibot-plugin-rsshub/0.1 (+https://github.com/OMSociety/maibot_plugin_rsshub)",
-        description="抓取订阅源时使用的 User-Agent",
-        json_schema_extra={"label": "User-Agent"},
+        default="maibot-plugin-rsshub (+https://github.com/OMSociety/maibot_plugin_rsshub)",
+        description="抓取时向站点声明的身份标识，即 HTTP User-Agent 请求头",
+        json_schema_extra={
+            "label": "抓取标识（User-Agent）",
+            "hint": "多数源不看这个；遇到 403 或空内容时改成浏览器的 UA 字符串",
+        },
     )
 
 
 class NetworkSection(PluginConfigBase):
-    """网络与代理。"""
+    """网络出口：代理与内网放行。"""
 
-    __ui_label__ = "网络代理"
+    __ui_label__ = "网络与代理"
+    __ui_icon__ = "globe"
     __ui_order__ = 2
 
     proxy_enabled: bool = Field(
         default=False,
-        description="抓取订阅源时是否走代理",
-        json_schema_extra={"label": "启用代理"},
+        description="抓取订阅源与下载图片时是否走代理",
+        json_schema_extra={"label": "走代理抓取", "hint": "国内源通常不用；抓境外源被墙时打开"},
     )
     proxy_url: str = Field(
         default="http://127.0.0.1:7897",
-        description="HTTP/SOCKS5 代理地址",
-        json_schema_extra={"label": "代理地址", "placeholder": "http://127.0.0.1:7897 或 socks5://127.0.0.1:7897"},
+        description="代理服务器地址，支持 http 与 socks5",
+        json_schema_extra={
+            "label": "代理地址",
+            "placeholder": "http://127.0.0.1:7897 或 socks5://127.0.0.1:7897",
+        },
     )
     allow_private_addresses: bool = Field(
         default=False,
-        description="允许订阅内网/环回/云元数据地址（SSRF 放行开关）",
+        description="允许抓取内网、环回与云元数据地址；这是 SSRF 防护的放行开关",
         json_schema_extra={
-            "label": "放行内网地址",
-            "hint": "开启后插件可抓取 127.0.0.0/8、10.0.0.0/8、192.168.0.0/16 等地址，仅在自建 RSSHub 于内网时开启",
+            "label": "允许抓内网地址",
+            "hint": "只有自建 RSSHub 跑在内网时才打开；打开后任何人给的链接都可能访问你的内网",
         },
     )
 
 
 class PushSection(PluginConfigBase):
-    """推送行为。"""
+    """推送：什么模式、失败怎么办。"""
 
     __ui_label__ = "推送"
+    __ui_icon__ = "send"
     __ui_order__ = 3
 
     default_mode: Literal["persona", "direct", "silent"] = Field(
         default="persona",
-        description="订阅源的默认推送模式；订阅/用户/会话级配置可覆盖",
+        description="新订阅默认怎么发：人格化播报、原文直推、或只注入上下文不发言",
         json_schema_extra={
             "label": "默认推送模式",
-            "hint": "persona=麦麦人格化播报；direct=模板原文直推；silent=静默注入上下文，不主动说话",
+            "hint": "persona=麦麦用自己的口吻说；direct=模板原文；silent=只进上下文，不主动开口",
         },
     )
     persona_fallback_to_direct: bool = Field(
         default=True,
-        description="人格化生成失败或超时时回退为原文直推",
-        json_schema_extra={"label": "失败回退直推"},
+        description="人格化生成失败或超时后，改发模板原文",
+        json_schema_extra={"label": "生成失败改发原文", "hint": "关掉则这一轮不推送，记入历史等重试"},
     )
-    persona_timeout_ms: int = Field(
-        default=30000,
-        ge=5000,
-        le=120000,
-        description="人格化生成的超时时间（毫秒）",
-        json_schema_extra={"label": "人格化超时"},
+    persona_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="等待人格化生成的最长秒数",
+        json_schema_extra={"label": "人格化超时（秒）", "hint": "模型慢时调大；超时会按上面的回退设置处理"},
     )
     max_reference_chars: int = Field(
         default=8000,
         ge=500,
         le=500000,
-        description="送给人格化生成的条目正文最大字符数",
-        json_schema_extra={"label": "正文长度上限", "hint": "过长会被订阅源正文拖慢生成并稀释质量"},
-    )
-    batch_merge: bool = Field(
-        default=True,
-        description="同一轮询周期同一订阅源的多条新条目合并为一次人格化生成",
-        json_schema_extra={"label": "同周期合并生成"},
+        description="交给麦麦参考的条目正文最大字符数",
+        json_schema_extra={
+            "label": "参考正文上限（字符）",
+            "hint": "正文越长生成越慢、越容易被细节带偏；8000 约等于两三篇短文",
+        },
     )
 
 
 class PersonaSection(PluginConfigBase):
-    """人格化播报提示词。"""
+    """人格化播报的口吻要求。"""
 
-    __ui_label__ = "人格化"
+    __ui_label__ = "人格化播报"
+    __ui_icon__ = "message-circle"
     __ui_order__ = 4
 
     format_instruction: str = Field(
@@ -169,90 +183,105 @@ class PersonaSection(PluginConfigBase):
             "一两句话点出最有意思的内容，别像新闻播报，别逐条罗列标题，别加引号。"
             "条目链接附在最后。"
         ),
-        description="人格化生成时附加给麦麦的格式指令",
-        json_schema_extra={"label": "播报口吻", "rows": 4},
+        description="作为格式要求附加给麦麦的播报指令",
+        json_schema_extra={
+            "label": "播报口吻",
+            "rows": 4,
+            "hint": "写你想要的效果，比如「一句话吐槽」「像朋友转帖」；不用写内容，内容是自动附上的",
+        },
     )
 
 
 class SilentSection(PluginConfigBase):
-    """静默注入。"""
+    """静默注入：只让麦麦知道，不主动说话。"""
 
-    __ui_label__ = "静默模式"
+    __ui_label__ = "静默注入"
+    __ui_icon__ = "eye-off"
     __ui_order__ = 5
 
     proactive_trigger: bool = Field(
         default=False,
-        description="静默注入后是否请求麦麦主动思考一轮（不保证开口，重要订阅不建议用 silent）",
-        json_schema_extra={"label": "注入后主动思考"},
+        description="注入上下文后，再请麦麦主动思考一轮是否要开口",
+        json_schema_extra={
+            "label": "注入后让麦麦想一轮",
+            "hint": "不保证真的开口；重要订阅建议直接用 persona 或 direct",
+        },
     )
 
 
 class MediaSection(PluginConfigBase):
-    """富媒体与附件。
+    """图片随消息发出；音视频要宿主打开「设置 → 能力 → 文件功能」才能发原件。"""
 
-    音频与视频的送达方式取决于调用来源：模型工具调用期间宿主签发文件凭证，可以按原
-    文件发送；后台定时推送没有凭证，只能附链接行。attach_files 控制工具调用内的文件
-    发送，定时推送不受该开关影响。
-    """
+    # 音视频送达方式取决于调用来源：模型工具调用期间宿主签发文件凭证，可按原文件发送；
+    # 后台定时推送没有凭证，只能附链接行。attach_files 只影响工具调用，定时推送不受它控制。
 
-    __ui_label__ = "富媒体"
+    __ui_label__ = "富媒体与附件"
+    __ui_icon__ = "image"
     __ui_order__ = 6
 
     max_images: int = Field(
         default=3,
         ge=0,
         le=9,
-        description="单条推送最多附带的图片数量，0 表示不附图",
-        json_schema_extra={"label": "图片上限"},
+        description="每条推送最多附带的图片张数",
+        json_schema_extra={"label": "每条最多几张图", "hint": "0 表示完全不带图"},
     )
-    image_max_bytes: int = Field(
-        default=8388608,
-        ge=1048576,
-        le=20971520,
-        description="单张图片下载大小上限（字节），超限跳过该图",
-        json_schema_extra={"label": "图片大小上限"},
+    image_max_mib: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        description="单张图片允许下载的大小上限，单位 MiB",
+        json_schema_extra={"label": "单张图片上限（MiB）", "hint": "超过的图直接跳过，不影响文字推送"},
     )
     table_render_enabled: bool = Field(
         default=True,
-        description="条目正文包含表格时渲染为图片（走宿主 render.html2png）",
-        json_schema_extra={"label": "表格转图片"},
+        description="条目正文里的表格渲染成图片再发",
+        json_schema_extra={"label": "表格转图片", "hint": "渲染失败会跳过表格，只发文字"},
     )
     multi_image_forward: bool = Field(
         default=True,
-        description="多图时以合并转发形式发送，false 则图文混排在一条消息里",
-        json_schema_extra={"label": "多图合并转发"},
+        description="多张图时用合并转发发送",
+        json_schema_extra={"label": "多图合并转发", "hint": "关闭则文字和图片混排成一条"},
     )
     attach_files: bool = Field(
         default=True,
-        description="工具推送时把音频/视频按原文件发送；需宿主打开「文件功能」开关，后台定时推送无凭证、始终附链接",
-        json_schema_extra={"label": "发送音视频文件"},
+        description="模型工具推送音视频时按原文件发送",
+        json_schema_extra={
+            "label": "音视频按文件发送",
+            "hint": "需要宿主打开「文件功能」开关；定时推送没有文件凭证，始终附链接",
+        },
     )
     max_files: int = Field(
         default=2,
         ge=0,
         le=5,
-        description="单次工具推送最多附带的音视频文件数，0 表示一律附链接",
-        json_schema_extra={"label": "附件数量上限"},
+        description="一次工具推送最多附带的音视频文件个数",
+        json_schema_extra={"label": "每次最多几个附件", "hint": "0 表示一律只发链接"},
     )
-    file_max_bytes: int = Field(
-        default=20971520,
-        ge=1048576,
-        le=104857600,
-        description="单个音视频文件的大小上限（字节），超限改为附链接",
-        json_schema_extra={"label": "附件大小上限"},
+    file_max_mib: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="单个音视频文件允许下载的大小上限，单位 MiB",
+        json_schema_extra={"label": "单个附件上限（MiB）", "hint": "超过的附件改为发链接"},
     )
 
 
 class RsshubSection(PluginConfigBase):
-    """RSSHub 实例。"""
+    """只影响 /xxx 这类短路由，直接填 Feed 地址时不经过它。"""
 
     __ui_label__ = "RSSHub"
+    __ui_icon__ = "rss"
     __ui_order__ = 7
 
     base_url: str = Field(
         default="https://rsshub.app",
-        description="RSSHub 实例地址，订阅 /xxx 类路由时拼接该前缀",
-        json_schema_extra={"label": "实例地址", "placeholder": "https://rsshub.app"},
+        description="拼接在短路由前的 RSSHub 实例地址",
+        json_schema_extra={
+            "label": "RSSHub 实例地址",
+            "placeholder": "https://rsshub.app",
+            "hint": "公共实例经常限流，自建实例填自己的地址更稳",
+        },
     )
 
 
@@ -296,9 +325,9 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
             return
         self._boot()
         self.ctx.logger.info(
-            "RSSHub 插件已就绪：数据库 %s，轮询间隔 %ss",
+            "RSSHub 插件已就绪：数据库 %s，轮询间隔 %s 分钟",
             self._db_path(),
-            self.config.polling.interval_seconds,
+            self.config.polling.interval_minutes,
         )
 
     async def on_unload(self) -> None:

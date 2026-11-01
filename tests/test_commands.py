@@ -19,14 +19,18 @@ RSS = RSS_XML.encode("utf-8")
 
 class Harness(RssCommandsMixin):
     def __init__(self, ctx: StubCtx, store: Store, config: object, client: FakeClient) -> None:
+        from rsshub.application.services.content_handler import ContentHandlerChain
+        from rsshub.application.services.dispatcher import Dispatcher
+        from rsshub.application.services.polling import build_defaults
+
         self.ctx = ctx
         self.store = store
         self.config = config
-        from rsshub.application.services.polling import build_defaults
-
         self.defaults = build_defaults(config)
         self.sub_service = SubscriptionService(ctx, store, config, client)
-        self.handler_chain = None
+        self.handler_chain = ContentHandlerChain(ctx)
+        self._client = client
+        self._dispatcher = Dispatcher(ctx, store, config, client)
 
 
 @pytest.fixture
@@ -96,3 +100,39 @@ async def test_set_option_and_session_defaults(harness: Harness) -> None:
     assert updated.interval_minutes == 15
     harness.sub_service.set_session_defaults("s1", {"push_mode": "direct"})
     assert harness.sub_service.get_session_defaults("s1")["push_mode"] == "direct"
+
+
+@pytest.mark.asyncio
+async def test_test_push_sends_latest_entries_without_history(harness: Harness) -> None:
+    await harness.handle_sub(stream_id="s1", matched_groups={"link": "https://example.com/feed.xml"}, user_id="u1")
+    sub = harness.store.repos.subs.list_by_session("s1")[0]
+    harness.sub_service.set_subscription_option("u1", sub.id, "push_mode", "direct")
+    before = len(harness.ctx.send.sent)
+
+    await harness.handle_test_push(stream_id="s1", is_local_operator=True)
+
+    pushed = harness.ctx.send.sent[before:]
+    assert any("第一篇" in text for _, text in pushed), pushed
+    assert harness.store.repos.history.list_by_session("s1") == []
+
+
+@pytest.mark.asyncio
+async def test_test_push_requires_operator(harness: Harness) -> None:
+    await harness.handle_sub(stream_id="s1", matched_groups={"link": "https://example.com/feed.xml"}, user_id="u1")
+
+    await harness.handle_test_push(stream_id="s1", is_local_operator=False)
+
+    assert "只对宿主主人开放" in harness.ctx.send.sent[-1][1]
+    assert harness.store.repos.history.list_by_session("s1") == []
+
+
+@pytest.mark.asyncio
+async def test_test_push_needs_id_with_multiple_subs(harness: Harness) -> None:
+    await harness.handle_sub(stream_id="s1", matched_groups={"link": "https://example.com/feed.xml"}, user_id="u1")
+    await harness.sub_service.subscribe(
+        user_id="u1", raw_link="https://example.com/other.xml", stream_id="s1", title="第二个"
+    )
+
+    await harness.handle_test_push(stream_id="s1", is_local_operator=True)
+
+    assert "请带编号" in harness.ctx.send.sent[-1][1]

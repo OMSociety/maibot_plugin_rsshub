@@ -36,7 +36,7 @@ class Dispatcher:
             MediaDownloader(
                 client,
                 max_images=int(media_cfg.max_images),
-                max_bytes=int(media_cfg.image_max_bytes),
+                max_bytes=int(media_cfg.image_max_mib) * 1024 * 1024,
             )
             if client is not None and media_cfg is not None
             else None
@@ -56,6 +56,7 @@ class Dispatcher:
         entries: list[Entry],
         settings: EffectiveSettings,
         stream_id: str,
+        record: bool = True,
     ) -> bool:
         if not entries:
             return True
@@ -72,8 +73,9 @@ class Dispatcher:
         else:
             delivered = await self._send_rich(stream_id, direct_text, bundle.images)
 
-        for entry in entries:
-            self._record(sub, feed, entry, direct_text, stream_id, delivered)
+        if record:
+            for entry in entries:
+                self._record(sub, feed, entry, direct_text, stream_id, delivered)
         return delivered
 
     async def retry_failed(self, limit: int = 50) -> int:
@@ -163,7 +165,7 @@ class Dispatcher:
                 stream_id,
                 reference=reference,
                 format_instruction=str(self._config.persona.format_instruction or ""),
-                timeout_ms=int(push_cfg.persona_timeout_ms),
+                timeout_ms=int(push_cfg.persona_timeout_seconds) * 1000,
             )
         except Exception as exc:
             self._ctx.logger.warning("RSS 人格化生成失败: %s", exc)
