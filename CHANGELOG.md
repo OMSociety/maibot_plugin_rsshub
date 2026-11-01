@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 配置项按「人看得懂」重做：分区改名为抓取与轮询、网络与代理、人格化播报、静默注入、富媒体与附件；每个字段的标签带单位，说明写清后果，提示写明何时该调
 - 字段重命名：`polling.interval_seconds` → `interval_minutes`、`push.persona_timeout_ms` → `persona_timeout_seconds`、`media.image_max_bytes` → `image_max_mib`、`media.file_max_bytes` → `file_max_mib`，时间统一分钟/秒、体积统一 MiB
 - 删除从未生效的 `push.batch_merge`；`config_version` 升至 1.2.0
-- 新增命令 `/测试推送 [编号]`：立刻把某条订阅的最新 3 条推到当前会话，验证源、处理链与推送效果；由宿主按 operator 权限校验（`[plugin] permission`），不写推送历史、不影响定时轮询
+- 新增命令 `/测试推送 [编号]`：立刻把某条订阅的最新 3 条推到当前会话，验证源、处理链与推送效果；由宿主按 operator 权限校验（`[plugin] permission` 或 `[plugin.command_permissions]` 单命令放行），不写推送历史、不影响定时轮询
 
 ### 迁移提示
 

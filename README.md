@@ -59,6 +59,20 @@
 | `/测试推送 [编号]` | 立即把某条订阅的最新 3 条内容推到当前会话，验证源、处理链与推送效果；需要插件管理权限（宿主 `[plugin] permission` 里加上 `qq:你的号`），不写推送历史、不影响定时轮询 |
 | `/rsshelp` | 帮助 |
 
+`/测试推送` 走宿主的 operator 权限校验，默认谁都不能用。两种授权方式：
+
+```toml
+# 方式一：加入插件管理权限（同时拥有安装/停用插件等权限）
+[plugin]
+permission = ["qq:你的QQ号"]
+
+# 方式二：只放行这一条命令
+[plugin.command_permissions."omsociety.rsshub.rss_test_push"]
+allow_users = ["qq:你的QQ号"]
+```
+
+保存后宿主热重载配置，无需重启。
+
 ## LLM 工具
 
 | 工具 | 用途 |
