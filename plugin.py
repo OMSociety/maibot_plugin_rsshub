@@ -224,7 +224,7 @@ class MediaSection(PluginConfigBase):
     )
     attach_files: bool = Field(
         default=True,
-        description="工具推送时把音频/视频按原文件发送（后台定时推送无文件凭证，始终附链接）",
+        description="工具推送时把音频/视频按原文件发送；需宿主打开「文件功能」开关，后台定时推送无凭证、始终附链接",
         json_schema_extra={"label": "发送音视频文件"},
     )
     max_files: int = Field(

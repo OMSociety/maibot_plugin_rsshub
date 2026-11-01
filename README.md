@@ -4,6 +4,12 @@
 
 本插件自 AstrBot 插件 [astrbot_plugin_rsshub](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub)（作者 FlanChanXwO）移植并重设计，遵循 AGPL-3.0。
 
+> **提示：宿主要开「文件功能」开关。**
+>
+> 音频与视频要按原文件发出，必须在宿主设置里打开 **设置 → 能力 → 文件功能**（配置文件里的 `[capabilities] files = true`，宿主默认关闭）。开关关着时插件照常推送，只是音视频改为在正文末尾附链接；定时推送无论开关如何都走链接，因为宿主的文件凭证只发给模型工具调用。
+>
+> 打开后宿主会同时启用 5 个文件工具（列附件、下载、读文本、存文本、发文件）、插件 SDK 的文件能力与 WebUI 文件入口；存储上限按宿主 `[files]` 分区（默认单文件 50 MiB、配额 10 GiB）。
+
 ## 功能
 
 - **订阅管理**：RSS/Atom/JSON Feed 全格式，15 个 LLM 工具让麦麦直接帮你订阅、退订、改配置
@@ -19,7 +25,7 @@
 
 宿主要求：MaiBot 1.3.19–1.3.99，`maibot-plugin-sdk` 2.21.0–2.21.99（与 `_manifest.json` 声明一致）。
 
-音视频文件发送还要求宿主配置 `[capabilities] files = true`（宿主 WebUI「能力」页的文件开关）；未开启时工具推送会检测到文件服务不可用，自动退回链接行。
+音视频文件发送还要求宿主打开「文件功能」开关，见上文提示；未开启时工具推送会检测到文件服务不可用，自动退回链接行。
 
 把仓库放到宿主 `plugins/` 目录（目录名 `omsociety_rsshub`），或通过插件中心安装。宿主按 `_manifest.json` 的 `dependencies` 自动安装 Python 依赖。
 

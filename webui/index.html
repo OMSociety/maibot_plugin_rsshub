@@ -10,6 +10,11 @@
   body {
     padding: 20px 24px 40px;
   }
+  .page-note {
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
   .page-title {
     font-family: var(--maibot-font-display);
     font-size: 18px;
@@ -50,6 +55,9 @@
 </head>
 <body class="maibot-page">
   <h1 class="page-title">RSS 订阅</h1>
+  <p class="maibot-muted page-note">
+    音频与视频按原文件推送需要宿主打开「设置 → 能力 → 文件功能」；关着时照常推送，音视频改为附链接。
+  </p>
   <div class="maibot-muted subtitle" id="subtitle">正在加载…</div>
   <div class="maibot-card banner hidden" id="banner" role="status"></div>
 
