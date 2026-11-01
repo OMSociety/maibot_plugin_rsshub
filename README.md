@@ -50,14 +50,14 @@
 
 ## 命令
 
-| 命令 | 说明 |
+| 命令（中英等价） | 说明 |
 |---|---|
-| `/sub <URL>` | 订阅（支持 RSSHub 短路由，如 `/github/trending`） |
-| `/unsub <编号或URL>` | 退订 |
-| `/sub_list` | 列出当前会话订阅 |
-| `/sub_status` | 查看轮询与近期推送概况 |
-| `/测试推送 [编号]` | 立即把某条订阅的最新 3 条内容推到当前会话，验证源、处理链与推送效果；需要插件管理权限（宿主 `[plugin] permission` 里加上 `qq:你的号`），不写推送历史、不影响定时轮询 |
-| `/rsshelp` | 帮助 |
+| `/订阅` 或 `/sub <URL>` | 订阅（支持 RSSHub 短路由，如 `/github/trending`） |
+| `/退订` 或 `/unsub [编号]` | 退订，不传编号清空当前会话 |
+| `/列表` 或 `/sub_list` | 列出当前会话订阅 |
+| `/状态` 或 `/sub_status` | 查看轮询与近期推送概况 |
+| `/测试推送 [编号]` 或 `/sub_test [编号]` | 立即把某条订阅的最新 3 条内容推到当前会话，验证源、处理链与推送效果；需要授权，不写推送历史、不影响定时轮询 |
+| `/帮助` 或 `/rsshelp` | 帮助 |
 
 `/测试推送` 走宿主的 operator 权限校验，默认谁都不能用。两种授权方式：
 
@@ -67,7 +67,7 @@
 permission = ["qq:你的QQ号"]
 
 # 方式二：只放行这一条命令
-[plugin.command_permissions."omsociety.rsshub.rss_test_push"]
+[plugin.command_permissions."omsociety.rsshub.rss_test"]
 allow_users = ["qq:你的QQ号"]
 ```
 

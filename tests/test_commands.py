@@ -132,3 +132,20 @@ async def test_test_push_needs_id_with_multiple_subs(harness: Harness) -> None:
     await harness.handle_test_push(stream_id="s1", is_local_operator=True)
 
     assert "请带编号" in harness.ctx.send.sent[-1][1]
+
+
+def test_command_ids_and_bilingual_patterns() -> None:
+    expected = {
+        "handle_sub": ("rss_sub", ("sub", "订阅")),
+        "handle_unsub": ("rss_unsub", ("unsub", "退订")),
+        "handle_list": ("rss_list", ("sub_list", "列表")),
+        "handle_status": ("rss_status", ("sub_status", "状态")),
+        "handle_help": ("rss_help", ("rsshelp", "帮助")),
+        "handle_test_push": ("rss_test", ("sub_test", "测试推送")),
+    }
+
+    for attr, (name, words) in expected.items():
+        info = getattr(RssCommandsMixin, attr).__maibot_component_info__
+        assert info.name == name
+        for word in words:
+            assert word in info.command_pattern, (name, word)

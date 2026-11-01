@@ -1,4 +1,4 @@
-"""聊天命令面：6 个 @Command，其中 /测试推送 只对宿主主人开放。
+"""聊天命令面：6 个 @Command，英文与中文写法等价，其中 /测试推送 需要 operator 权限。
 
 宿主不会替插件发送命令返回值，所以每个命令都在处理函数里自行 send.text。
 命令只覆盖高频动作，其余能力在 Tools 与（三期）WebUI 上。
@@ -15,13 +15,13 @@ from ...errors import RsshubError
 from ...infrastructure.fetcher.parser import parse_feed
 from ..services.content_handler import HandlerContext
 
-_HELP = """RSSHub 订阅命令
-/sub <地址或路由> [标题]  订阅一个源
-/unsub [编号]             取消订阅，不传编号则清空当前会话
-/sub_list                 查看当前会话订阅
-/sub_status               查看轮询与推送概况
-/测试推送 [编号]          立即把某条订阅的最新内容推到当前会话（仅宿主主人）
-/rsshelp                  显示本帮助
+_HELP = """RSSHub 订阅命令（中文与英文等价）
+/订阅 或 /sub <地址或路由> [标题]   订阅一个源
+/退订 或 /unsub [编号]              取消订阅，不传编号则清空当前会话
+/列表 或 /sub_list                  查看当前会话订阅
+/状态 或 /sub_status                查看轮询与推送概况
+/测试推送 或 /sub_test [编号]       立即把某条订阅的最新内容推到当前会话（需授权）
+/帮助 或 /rsshelp                   显示本帮助
 更细的配置（推送模式、处理链、历史）可以直接用自然语言让麦麦调用工具。"""
 
 
@@ -34,7 +34,7 @@ class RssCommandsMixin:
     @Command(
         "rss_sub",
         description="订阅 RSS/Atom 源",
-        pattern=r"^/sub(?:@\S+)?\s+(?P<link>\S+)(?:\s+(?P<title>.+))?$",
+        pattern=r"^/(?:sub|订阅)(?:@\S+)?\s+(?P<link>\S+)(?:\s+(?P<title>.+))?$",
     )
     async def handle_sub(self, stream_id: str = "", matched_groups: dict | None = None, **kwargs: Any) -> tuple:
         groups = matched_groups or {}
@@ -60,7 +60,7 @@ class RssCommandsMixin:
         await self._reply(stream_id, f"已订阅「{sub.title or link}」（订阅 #{sub.id}）")
         return True, "订阅成功", True
 
-    @Command("rss_unsub", description="取消订阅", pattern=r"^/unsub(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$")
+    @Command("rss_unsub", description="取消订阅", pattern=r"^/(?:unsub|退订)(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$")
     async def handle_unsub(self, stream_id: str = "", matched_groups: dict | None = None, **kwargs: Any) -> tuple:
         raw_id = str((matched_groups or {}).get("sub_id") or "").strip()
         try:
@@ -76,7 +76,7 @@ class RssCommandsMixin:
         await self._reply(stream_id, f"已取消 {removed} 个订阅")
         return True, "取消成功", True
 
-    @Command("rss_sub_list", description="查看当前会话订阅", pattern=r"^/sub_list(?:@\S+)?$")
+    @Command("rss_list", description="查看当前会话订阅", pattern=r"^/(?:sub_list|列表)(?:@\S+)?$")
     async def handle_list(self, stream_id: str = "", **kwargs: Any) -> tuple:
         subs = self.sub_service.list_for_session(stream_id)
         if not subs:
@@ -93,7 +93,7 @@ class RssCommandsMixin:
         await self._reply(stream_id, "\n".join(lines))
         return True, "已列出", True
 
-    @Command("rss_sub_status", description="查看轮询与推送概况", pattern=r"^/sub_status(?:@\S+)?$")
+    @Command("rss_status", description="查看轮询与推送概况", pattern=r"^/(?:sub_status|状态)(?:@\S+)?$")
     async def handle_status(self, stream_id: str = "", **kwargs: Any) -> tuple:
         subs = self.sub_service.list_for_session(stream_id)
         total = len(self.store.repos.subs.list_active())
@@ -108,9 +108,9 @@ class RssCommandsMixin:
         return True, "已输出概况", True
 
     @Command(
-        "rss_test_push",
+        "rss_test",
         description="立即把某条订阅的最新内容推送到当前会话，用于验证源、处理链与推送效果",
-        pattern=r"^/(?:测试推送|rss_test)(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$",
+        pattern=r"^/(?:sub_test|测试推送)(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$",
         permission="operator",
     )
     async def handle_test_push(
@@ -182,7 +182,7 @@ class RssCommandsMixin:
         )
         return True, "测试推送完成", True
 
-    @Command("rss_help", description="RSSHub 订阅帮助", pattern=r"^/rsshelp(?:@\S+)?$")
+    @Command("rss_help", description="RSSHub 订阅帮助", pattern=r"^/(?:rsshelp|帮助)(?:@\S+)?$")
     async def handle_help(self, stream_id: str = "", **kwargs: Any) -> tuple:
         await self._reply(stream_id, _HELP)
         return True, "已输出帮助", True
