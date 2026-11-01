@@ -10,6 +10,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-01
+
+### 修复
+
+- `rss_push_xml_entry` 调用不存在的 `SubscriptionService.resolve_for_session`，工具整体报错退出；改为按订阅、用户、全局三级解析生效配置
+- 同条目去重把 guid 当作 `entry_link` 比较，重复推送拦不住；改为按 `entry_guid` 且只统计成功记录
+- 宿主关闭 `[capabilities] files` 时，工具推送在日志说明原因并退回链接行
+
+### Fixed
+
+- `rss_push_xml_entry` called a non-existent `SubscriptionService.resolve_for_session` and failed outright; effective settings are now resolved from subscription, user, and global defaults
+- Entry deduplication compared a guid against `entry_link`, so repeat pushes slipped through; it now matches `entry_guid` and only counts successful records
+- When the host disables `[capabilities] files`, tool pushes log the reason and fall back to link lines
+
 ## [0.2.0] - 2026-11-01
 
 ### 变更
@@ -46,5 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebUI management page: subscription list with filtering, push history, option tuning, enable/disable and delete, poll now, batch import
 - Configuration across 8 sections (plugin, polling, network, push, persona, silent, media, RSSHub) with hot reload on save
 
+[0.2.1]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.1
 [0.2.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.2.0
 [0.1.0]: https://github.com/OMSociety/maibot_plugin_rsshub/releases/tag/v0.1.0
