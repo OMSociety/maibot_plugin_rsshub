@@ -48,8 +48,13 @@
   textarea.maibot-input { width: 100%; min-height: 140px; font: inherit; font-size: 13px; resize: vertical; }
   .badge-retry { margin-left: 6px; }
   /* 宿主公共类只覆盖关闭态控件，展开列表与悬停态在这里补齐，颜色仍全部走宿主变量。 */
-  .maibot-button:hover { filter: brightness(1.15); }
-  .maibot-button:active { filter: brightness(0.92); }
+  /* 注意：宿主自带 .maibot-button:hover:not(:disabled)（亮度 0.96，深底下几乎不可见）， */
+  /* 这里必须叠 .maibot-page 提高优先级才能盖过它。 */
+  .maibot-page .maibot-button:hover:not(:disabled) {
+    filter: brightness(1.22);
+    border-color: var(--maibot-primary);
+  }
+  .maibot-page .maibot-button:active:not(:disabled) { filter: brightness(0.92); }
   .maibot-select option { background: var(--maibot-surface); color: var(--maibot-foreground); }
   .hidden { display: none !important; }
   .empty { padding: 24px 16px; text-align: center; }
