@@ -135,7 +135,10 @@ async def test_silent_push_injects_image_with_referenceable_message_id(store: St
     image_segments = [segment for segment in call["segments"] if segment["type"] == "image"]
     assert len(image_segments) == 1
     assert len(base64.b64decode(image_segments[0]["binary_data_base64"])) <= CONTEXT_IMAGE_BYTES
-    assert "需要分享" in call["segments"][0]["content"], "注入文本要提示麦麦可以把图一起发出来"
+    hint = call["segments"][0]["content"]
+    assert "需要分享" in hint, "注入文本要提示麦麦可以把图一起发出来"
+    assert f'msg_id="{call["message_id"]}"' in hint, "提示里的 msg_id 必须与注入消息一致，麦麦才能据此取图"
+    assert "index=0" in hint
     assert len(ctx.mai_proactive_calls) == 1
 
 

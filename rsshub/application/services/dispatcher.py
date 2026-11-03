@@ -32,7 +32,6 @@ PUSH_MODES = ("persona", "direct", "silent")
 # 注入消息的短 ID 长度：宿主对 ≤12 字符的 ID 原样展示，麦麦在回复里直接引用它取图。
 _CONTEXT_MESSAGE_ID_DIGITS = 8
 _CONTEXT_MESSAGE_ID_PREFIX = "rss"
-_CONTEXT_SHARE_HINT = "需要分享时可以把这张图一起发出来。"
 
 
 class Dispatcher:
@@ -95,12 +94,13 @@ class Dispatcher:
         links = list(bundle.audio_video_links) + list(extra_links or [])
         if links:
             direct_text = f"{direct_text}\n{av_link_card_text(links)}"
+        message_id = _context_message_id(entries)
         if mode == "silent" and bundle.images:
-            direct_text = f"{direct_text}\n{_CONTEXT_SHARE_HINT}"
+            direct_text = f"{direct_text}\n{_context_share_hint(message_id, len(bundle.images))}"
 
         send_started = time.monotonic()
         if mode == "silent":
-            delivered = await self._send_silent(stream_id, direct_text, entries, bundle.images)
+            delivered = await self._send_silent(stream_id, direct_text, entries, bundle.images, message_id)
         elif mode == "persona":
             delivered = await self._send_persona(stream_id, feed_title, entries, direct_text, bundle.images)
         else:
@@ -257,7 +257,14 @@ class Dispatcher:
             return await self._send_rich(stream_id, direct_text, images)
         return False
 
-    async def _send_silent(self, stream_id: str, text: str, entries: list[Entry], images: list[str]) -> bool:
+    async def _send_silent(
+        self,
+        stream_id: str,
+        text: str,
+        entries: list[Entry],
+        images: list[str],
+        message_id: str,
+    ) -> bool:
         segments = segments_from_text(text)
         segments.extend(_context_image_segments(images, entries))
         try:
@@ -266,7 +273,7 @@ class Dispatcher:
                 segments,
                 visible_text=entries[0].title if entries else "",
                 source_kind="rsshub",
-                message_id=_context_message_id(entries),
+                message_id=message_id,
                 replyable=False,
             )
         except Exception as exc:
@@ -325,6 +332,12 @@ class Dispatcher:
         if feed is None:
             return f"sub:{sub.id}"
         return f"feed:{feed.id}:sub:{sub.id}"
+
+
+def _context_share_hint(message_id: str, image_count: int) -> str:
+    """告诉麦麦这张图挂在哪条消息上：宿主的 reply 工具按 msg_id + index 取图。"""
+    indices = "index=0" if image_count == 1 else f"index=0..{image_count - 1}"
+    return f'需要分享时可以把图一起带上：msg_id="{message_id}"，{indices}。'
 
 
 def _context_image_segments(images: list[str], entries: list[Entry]) -> list[dict[str, Any]]:
