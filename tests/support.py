@@ -151,12 +151,15 @@ class FakeClient:
         etag: str | None = None,
         last_modified: object = None,
         timeout: float | None = None,
+        headers: dict[str, str] | None = None,
     ) -> object:
         import asyncio
 
         from rsshub.infrastructure.fetcher.client import FetchResult
 
-        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified, "timeout": timeout})
+        self.calls.append(
+            {"url": url, "etag": etag, "last_modified": last_modified, "timeout": timeout, "headers": headers or {}}
+        )
         if url in self.delays:
             await asyncio.sleep(self.delays[url])
         if url in self.payloads:

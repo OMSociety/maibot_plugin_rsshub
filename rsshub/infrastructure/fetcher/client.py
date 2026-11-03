@@ -76,6 +76,7 @@ class HttpClient:
         etag: str | None = None,
         last_modified: str | None = None,
         timeout: float | None = None,
+        headers: dict[str, str] | None = None,
     ) -> FetchResult:
         client = await self._get_client()
         condition_headers: dict[str, str] = {}
@@ -83,6 +84,8 @@ class HttpClient:
             condition_headers["If-None-Match"] = etag
         if last_modified:
             condition_headers["If-Modified-Since"] = last_modified
+        if headers:
+            condition_headers.update(headers)
         request_timeout = self._timeout if timeout is None else timeout
 
         current = url

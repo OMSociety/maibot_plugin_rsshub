@@ -48,6 +48,10 @@ SKIP_UNDECODABLE = "图片无法解码"
 SKIP_COMPRESS = "压不进大小预算"
 SKIP_LIMIT = "超出张数上限"
 
+# pixiv 的图片 CDN 只认带 pixiv 站内 Referer 的请求，否则一律 403；
+# 这类防盗链按域名补头，不影响其它源。
+_REFERERS_BY_HOST = {"pximg.net": "https://www.pixiv.net/"}
+
 _IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/avif")
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".mov", ".m3u8")
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".flac")
@@ -249,7 +253,10 @@ class MediaDownloader:
     ) -> tuple[str | None, str]:
         limit = self._timeout if timeout is None else timeout
         try:
-            result = await asyncio.wait_for(self._client.fetch(url, timeout=limit), limit + 1)
+            result = await asyncio.wait_for(
+                self._client.fetch(url, timeout=limit, headers=_request_headers(url)),
+                limit + 1,
+            )
         except (FeedTimeoutError, TimeoutError):
             return None, SKIP_TIMEOUT
         except FeedFetchError:
@@ -280,6 +287,15 @@ class MediaDownloader:
             return content_type in _IMAGE_TYPES or content_type.startswith("image/")
         head = payload[:12]
         return head.startswith((b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF", b"BM"))
+
+
+def _request_headers(url: str) -> dict[str, str]:
+    """按 host 补防盗链所需的请求头。"""
+    host = (urlparse(url).hostname or "").lower()
+    for suffix, referer in _REFERERS_BY_HOST.items():
+        if host == suffix or host.endswith(f".{suffix}"):
+            return {"Referer": referer}
+    return {}
 
 
 def _compress_failure_reason(payload: bytes) -> str:

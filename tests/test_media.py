@@ -149,6 +149,22 @@ async def test_undecodable_payload_is_reported_separately() -> None:
     assert "无法解码" in bundle.describe_skips()
 
 
+@pytest.mark.asyncio
+async def test_pixiv_cdn_gets_referer_header() -> None:
+    """pximg 只认站内 Referer：不带就 403，接口必须按域名补头。"""
+    url = "https://i.pximg.net/img-original/img/2026/10/25/19/54/36/151270720_p0.jpg"
+    other = "https://cdn.example.com/b.jpg"
+    client = FakeClient(payloads={url: PNG, other: PNG})
+    downloader = MediaDownloader(client, max_images=2, max_bytes=1024)
+
+    bundle = await downloader.collect([_entry(content_html=f'<img src="{url}"><img src="{other}">')])
+
+    assert len(bundle.images) == 2
+    by_url = {call["url"]: call["headers"] for call in client.calls}
+    assert by_url[url] == {"Referer": "https://www.pixiv.net/"}
+    assert by_url[other] == {}, "其它站不该被塞 Referer"
+
+
 def test_media_budget_constants_fit_host_limits() -> None:
     """预算常量本身也要受 assert：把它们改成不设限的值会立刻失败。"""
     from rsshub.infrastructure.media import downloader as module
