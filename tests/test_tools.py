@@ -82,9 +82,9 @@ async def test_xml_push_dedupes_same_entry(tmp_path: object) -> None:
 def test_tool_switch_hides_components_from_host() -> None:
     from collections import Counter
 
-    from maibot_plugin_rsshub.plugin import create_plugin
+    from tests.support import load_plugin_module
 
-    instance = create_plugin()
+    instance = load_plugin_module().create_plugin()
     instance.set_plugin_config({"plugin": {"config_version": "1.3.0", "tools_enabled": False}})
     assert Counter(item["type"] for item in instance.get_components()) == {"API": 8, "COMMAND": 6}
 

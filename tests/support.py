@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from types import SimpleNamespace
+
+
+def load_plugin_module():
+    """按检出目录名动态导入插件包，测试不依赖仓库文件夹叫什么。"""
+    package = Path(__file__).resolve().parent.parent.name
+    return importlib.import_module(f"{package}.plugin")
 
 
 class StubLogger:

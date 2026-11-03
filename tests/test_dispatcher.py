@@ -66,6 +66,20 @@ async def test_persona_failure_falls_back_to_direct(store: Store, tmp_path: obje
 
     assert ctx.mai_reply_calls, "应当先尝试人格化生成"
     assert ctx.send.sent, "生成失败后应回退直推"
+    fallback = ctx.send.sent[-1][1]
+    assert "第一篇" in fallback and "https://example.com/1" in fallback, "回退的是直推模板原文"
+
+
+@pytest.mark.asyncio
+async def test_persona_success_sends_generated_text(store: Store, tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path, reply_text="刚看到一篇挺有意思的")
+    feed, sub, entries = _fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config())
+
+    await dispatcher.push(sub=sub, feed=feed, entries=entries, settings=_settings("persona"), stream_id="s1")
+
+    assert ctx.send.sent[-1][1] == "刚看到一篇挺有意思的"
+    assert "第一篇" not in ctx.send.sent[-1][1]
 
 
 @pytest.mark.asyncio

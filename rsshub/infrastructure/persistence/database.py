@@ -16,8 +16,6 @@ from ...errors import RsshubError
 INHERIT_VALUE = -100
 INHERIT_MODE = "inherit"
 
-SCHEMA_VERSION = "2"
-
 _DDL_V1 = """
 CREATE TABLE IF NOT EXISTS rsshub_users (
     user_id TEXT PRIMARY KEY,

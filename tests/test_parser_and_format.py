@@ -51,11 +51,20 @@ def test_parse_feed_extracts_entries_and_resolves_links() -> None:
     assert len(document.entries) == 2
     first, second = document.entries
     assert first.guid == "post-1"
-    assert "utm_source" not in first.link
+    assert first.link == "https://example.com/posts/1", "跟踪参数应被整段剔除，只留下干净链接"
     assert first.summary == "摘要一"
     assert first.raw_xml.startswith("<item>")
     assert second.link == "https://example.com/relative/2"
     assert second.published is not None and second.published.year == 2025
+
+
+def test_tracking_params_are_stripped_selectively() -> None:
+    from rsshub.infrastructure.fetcher.url_guard import strip_tracking_params
+
+    tracking = frozenset({"ref"})
+    stripped = strip_tracking_params("https://example.com/a?ref=weibo&utm_medium=x&keep=1&utm_source=y", tracking)
+
+    assert stripped == "https://example.com/a?keep=1"
 
 
 def test_latest_entries_orders_by_time_desc() -> None:
@@ -81,5 +90,5 @@ def test_reference_is_truncated_to_limit() -> None:
 
     reference = build_reference("示例源", document.entries, 120)
 
-    assert len(reference) <= 120
-    assert "示例源" in reference
+    assert len(reference) == 120, "裁剪到上限时应吃满上限，而不是提前截断"
+    assert reference == build_reference("示例源", document.entries, 120)[:120]

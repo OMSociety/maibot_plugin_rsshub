@@ -104,6 +104,16 @@ async def test_slow_image_is_skipped_within_budget(monkeypatch: pytest.MonkeyPat
     assert all(call["timeout"] is not None for call in client.calls)
 
 
+def test_media_budget_constants_fit_host_limits() -> None:
+    """预算常量本身也要受assert：把它们改成不设限的值会立刻失败。"""
+    from rsshub.infrastructure.media import downloader as module
+
+    assert 0 < module._IMAGE_TIMEOUT < module._MEDIA_BUDGET
+    assert module._MEDIA_BUDGET <= module._IMAGE_TIMEOUT * 2, "整批预算不该远超单图预算"
+    assert module._MEDIA_BUDGET < 60, "整批预算必须留在宿主 60 秒 RPC 上限以内"
+    assert 1 <= module._MAX_PARALLEL <= 5
+
+
 @pytest.fixture
 def store(tmp_path: object) -> Store:
     return Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]
@@ -249,4 +259,24 @@ async def test_file_attachments_respect_limits(tmp_path: object) -> None:
     )
 
     assert sent == ["https://example.com/a.mp3"]
-    assert len(ctx.files.uploads) == 1
+    assert len(ctx.files.uploads) == 1, "达到文件数上限后不再上传，超体积文件同样被挡下"
+
+
+@pytest.mark.asyncio
+async def test_file_attachments_skip_oversized_file(tmp_path: object) -> None:
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    client = FakeClient(
+        payloads={
+            "https://example.com/a.mp3": MP3,
+            "https://example.com/huge.mp4": b"0" * 4096,
+        }
+    )
+    attachments = FileAttachments(ctx, client, max_files=5, max_bytes=1024)
+
+    sent = await attachments.deliver(
+        ["https://example.com/a.mp3", "https://example.com/huge.mp4"],
+        tmp_path / "media",  # type: ignore[operator]
+    )
+
+    assert sent == ["https://example.com/a.mp3"], "超体积文件不发送"
+    assert len(ctx.files.uploads) == 1, "超体积文件不该上传"

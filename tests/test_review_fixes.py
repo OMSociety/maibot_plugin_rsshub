@@ -368,12 +368,12 @@ async def test_dr15_import_requires_session_and_counts_duplicates(store: Store, 
 
 @pytest.mark.asyncio
 async def test_dr09_disabling_plugin_stops_scheduler(tmp_path: object) -> None:
-    from maibot_plugin_rsshub.plugin import create_plugin
     from maibot_sdk import CONFIG_RELOAD_SCOPE_SELF
 
     from rsshub.application.services.scheduler import Scheduler
+    from tests.support import load_plugin_module
 
-    plugin = create_plugin()
+    plugin = load_plugin_module().create_plugin()
     plugin._set_context(StubCtx(tmp_path))  # type: ignore[arg-type]
     plugin.set_plugin_config({"plugin": {"config_version": "1.3.0", "enabled": True}})
     plugin.store = Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]

@@ -20,9 +20,8 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
 def _rss(*items: str) -> bytes:
     body = "".join(items)
     return (
-        '<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel>'
-        f"<title>示例源</title>{body}</channel></rss>"
-    ).encode("utf-8")
+        f'<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>示例源</title>{body}</channel></rss>'
+    ).encode()
 
 
 def _item(guid: str, title: str, content_html: str = "") -> str:

@@ -55,6 +55,37 @@ async def test_overview_reports_counts(harness: Harness) -> None:
 
 
 @pytest.mark.asyncio
+async def test_overview_counts_failures_and_pending_retries(harness: Harness) -> None:
+    from rsshub.infrastructure.persistence.models import PushHistory
+
+    await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    rows = (
+        ("success", 0, 3),
+        ("failed", 0, 3),
+        ("failed", 3, 3),
+        ("stopped", 0, 3),
+    )
+    for status, retry_count, max_retries in rows:
+        harness.store.repos.history.add(
+            PushHistory(
+                user_id="u1",
+                content="x",
+                target_session="s1",
+                status=status,
+                source_type="agent",
+                retry_count=retry_count,
+                max_retries=max_retries,
+            )
+        )
+
+    data = await harness.webui_overview()
+
+    assert data["pushes_24h"] == 4, "统计口径是 24 小时内的全部投递记录"
+    assert data["failures_24h"] == 3, "failed 与 stopped 都算没送达，success 不算"
+    assert data["pending_retry"] == 1, "待重试只数可以再试的失败记录"
+
+
+@pytest.mark.asyncio
 async def test_list_subscriptions_supports_keyword(harness: Harness) -> None:
     await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
 
