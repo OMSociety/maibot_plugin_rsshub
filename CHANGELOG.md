@@ -10,6 +10,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-03
+
+### 变更
+
+- 注入模式（取值 `silent`，界面标签由「静默」改为「注入」）：把条目写进麦麦的聊天上下文后固定请它主动思考一轮，是否开口由它自己决定；`[silent] proactive_trigger` 开关取消，配置版本升至 1.4.0
+- WebUI 管理台的操作反馈改为右下角轻提示：改参数、启停、删除后直接刷新列表，不再在页面顶部插入会挤动版式的提示条；错误与导入结果提示保留，仍不占文档流
+
+### Changed
+
+- The injection mode (`silent`, relabelled from "静默" to "注入" in the UI) appends entries to the chat context and always asks MaiBot to think one round about whether to speak; the `[silent] proactive_trigger` switch is gone and the config version moves to 1.4.0
+- WebUI action feedback moved to a bottom-right toast: parameter edits, enable/disable and deletes refresh the list in place instead of inserting a layout-shifting banner; errors and import summaries keep their toast
+
 ## [0.5.0] - 2026-11-03
 
 ### 修复

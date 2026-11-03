@@ -52,7 +52,7 @@ class PluginSection(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="1.3.0",
+        default="1.4.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
@@ -148,10 +148,10 @@ class PushSection(PluginConfigBase):
 
     default_mode: Literal["persona", "direct", "silent"] = Field(
         default="persona",
-        description="新订阅默认怎么发：人格化播报、原文直推、或只注入上下文不发言",
+        description="新订阅默认怎么发：人格化播报、原文直推、或注入上下文让麦麦自己决定说不说",
         json_schema_extra={
             "label": "默认推送模式",
-            "hint": "persona=麦麦用自己的口吻说；direct=模板原文；silent=只进上下文，不主动开口",
+            "hint": "persona=麦麦用自己的口吻说；direct=模板原文；silent=注入上下文并请麦麦想一轮要不要开口",
         },
     )
     persona_fallback_to_direct: bool = Field(
@@ -200,23 +200,6 @@ class PersonaSection(PluginConfigBase):
     )
 
 
-class SilentSection(PluginConfigBase):
-    """静默注入：只让麦麦知道，不主动说话。"""
-
-    __ui_label__ = "静默注入"
-    __ui_icon__ = "eye-off"
-    __ui_order__ = 5
-
-    proactive_trigger: bool = Field(
-        default=False,
-        description="注入上下文后，再请麦麦主动思考一轮是否要开口",
-        json_schema_extra={
-            "label": "注入后让麦麦想一轮",
-            "hint": "不保证真的开口；重要订阅建议直接用 persona 或 direct",
-        },
-    )
-
-
 class MediaSection(PluginConfigBase):
     """图片随消息发出；音视频要宿主打开「设置 → 能力 → 文件功能」才能发原件。"""
 
@@ -225,7 +208,7 @@ class MediaSection(PluginConfigBase):
 
     __ui_label__ = "富媒体与附件"
     __ui_icon__ = "image"
-    __ui_order__ = 6
+    __ui_order__ = 5
 
     max_images: int = Field(
         default=3,
@@ -301,7 +284,6 @@ class RsshubPluginConfig(PluginConfigBase):
     network: NetworkSection = Field(default_factory=NetworkSection)
     push: PushSection = Field(default_factory=PushSection)
     persona: PersonaSection = Field(default_factory=PersonaSection)
-    silent: SilentSection = Field(default_factory=SilentSection)
     media: MediaSection = Field(default_factory=MediaSection)
     rsshub: RsshubSection = Field(default_factory=RsshubSection)
 

@@ -6,7 +6,7 @@ from typing import Final
 
 PLUGIN_ID: Final = "omsociety.rsshub"
 
-# 推送模式：persona=人格化播报 / direct=模板直推 / silent=静默注入上下文
+# 推送模式：persona=人格化播报 / direct=模板直推 / silent=注入上下文并请麦麦想一轮
 PUSH_MODES: Final = ("persona", "direct", "silent")
 DEFAULT_PUSH_MODE: Final = "persona"
 

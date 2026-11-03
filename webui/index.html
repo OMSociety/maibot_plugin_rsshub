@@ -39,8 +39,25 @@
   .history-body { display: grid; gap: 4px; }
   .history-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; }
   .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-  .banner { margin: 8px 0 16px; padding: 10px 14px; font-size: 13px; }
-  .banner.error { color: var(--maibot-danger); }
+  /* 轻提示固定悬浮在右下角，不占文档流，出现与消失都不推动页面内容。 */
+  .toast {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 50;
+    max-width: min(420px, 80vw);
+    padding: 10px 14px;
+    font-size: 13px;
+    border: 1px solid var(--maibot-border);
+    background: var(--maibot-surface);
+    color: var(--maibot-foreground);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: none; }
+  .toast.error { color: var(--maibot-danger); border-color: var(--maibot-danger); }
   .form-grid { display: grid; gap: 10px; max-width: 560px; }
   .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .form-row label { min-width: 72px; font-size: 13px; }
@@ -77,7 +94,7 @@
     音频与视频按原文件推送需要宿主打开「设置 → 能力 → 文件功能」；关着时照常推送，音视频改为附链接。
   </p>
   <div class="maibot-muted subtitle" id="subtitle">正在加载…</div>
-  <div class="maibot-card banner hidden" id="banner" role="status"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <section class="stats" id="cards"></section>
 
@@ -142,16 +159,18 @@
     const state = { subs: { page: 1, pages: 1, keyword: '' }, history: { page: 1, pages: 1, status: '' } };
     const $ = (id) => document.getElementById(id);
 
-    function banner(text, isError = false) {
-      const el = $('banner');
-      el.textContent = text;
-      el.classList.toggle('error', isError);
-      el.classList.toggle('hidden', !text);
-      if (text) setTimeout(() => el.classList.add('hidden'), 6000);
+    let toastTimer = 0;
+    function toast(text, isError = false) {
+      const node = $('toast');
+      node.textContent = text;
+      node.classList.toggle('error', isError);
+      node.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => node.classList.remove('show'), isError ? 6000 : 2500);
     }
 
     function fail(error) {
-      banner(error && error.message ? error.message : String(error), true);
+      toast(error && error.message ? error.message : String(error), true);
     }
 
     function el(tag, props = {}, children = []) {
@@ -250,7 +269,7 @@
 
     function modeSelect(item) {
       const select = el('select', { class: 'maibot-select', 'aria-label': '推送模式' });
-      for (const [value, label] of [['inherit', '继承'], ['persona', '人格化'], ['direct', '直推'], ['silent', '静默']]) {
+      for (const [value, label] of [['inherit', '继承'], ['persona', '人格化'], ['direct', '直推'], ['silent', '注入']]) {
         const option = el('option', { value });
         option.textContent = label;
         select.append(option);
@@ -268,7 +287,7 @@
         const raw = input.value.trim();
         if (!raw) return;
         const minutes = Number(raw);
-        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { banner('间隔需为 1–1440 的整数', true); return; }
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { toast('间隔需为 1–1440 的整数', true); return; }
         updateSub(item.id, 'interval', String(minutes));
       };
       input.addEventListener('change', commit);
@@ -278,7 +297,6 @@
     async function updateSub(subId, key, value) {
       try {
         await maibot.action('update_subscription', { sub_id: subId, key, value });
-        banner(`已更新订阅 #${subId}`);
         await Promise.all([loadOverview(), loadSubs()]);
       } catch (error) { fail(error); }
     }
@@ -286,7 +304,6 @@
     async function setState(subId, enabled) {
       try {
         await maibot.action('set_state', { sub_id: subId, enabled });
-        banner(`订阅 #${subId} 已${enabled ? '启用' : '停用'}`);
         await Promise.all([loadOverview(), loadSubs()]);
       } catch (error) { fail(error); }
     }
@@ -294,7 +311,6 @@
     async function deleteSub(subId) {
       try {
         await maibot.action('delete_subscription', { sub_id: subId });
-        banner(`订阅 #${subId} 已删除`);
         await Promise.all([loadOverview(), loadSubs()]);
       } catch (error) { fail(error); }
     }
@@ -302,7 +318,7 @@
     async function pollNow(subId) {
       try {
         await maibot.action('poll_now', { sub_id: subId });
-        banner(`已把订阅 #${subId} 排入下一轮抓取`);
+        toast(`已把订阅 #${subId} 排入下一轮抓取`);
       } catch (error) { fail(error); }
     }
 
@@ -359,8 +375,8 @@
     $('do-import').addEventListener('click', async () => {
       const links = $('import-links').value.trim();
       const session = $('import-session').value.trim();
-      if (!links) { banner('请先填写要导入的地址', true); return; }
-      if (!session) { banner('请填写目标会话 ID，否则订阅建立后没有推送对象', true); return; }
+      if (!links) { toast('请先填写要导入的地址', true); return; }
+      if (!session) { toast('请填写目标会话 ID，否则订阅建立后没有推送对象', true); return; }
       try {
         const result = await maibot.action('import_subscriptions', {
           links,
@@ -369,7 +385,7 @@
         });
         const duplicated = result.duplicated ? `，${result.duplicated} 条已存在` : '';
         const failed = result.failed && result.failed.length ? `；失败 ${result.failed.length} 条：${result.failed[0]}` : '';
-        banner(`已导入 ${result.imported} 条${duplicated}${failed}`, Boolean(result.failed && result.failed.length));
+        toast(`已导入 ${result.imported} 条${duplicated}${failed}`, Boolean(result.failed && result.failed.length));
         await Promise.all([loadOverview(), loadSubs(1)]);
       } catch (error) { fail(error); }
     });

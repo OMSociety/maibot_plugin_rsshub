@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from rsshub.application.services.dispatcher import Dispatcher
@@ -83,7 +81,7 @@ async def test_persona_success_sends_generated_text(store: Store, tmp_path: obje
 
 
 @pytest.mark.asyncio
-async def test_silent_mode_injects_without_speaking(store: Store, tmp_path: object) -> None:
+async def test_silent_mode_injects_and_triggers_thinking(store: Store, tmp_path: object) -> None:
     ctx = StubCtx(tmp_path)
     feed, sub, entries = _fixtures(store)
     dispatcher = Dispatcher(ctx, store, make_config())
@@ -91,16 +89,5 @@ async def test_silent_mode_injects_without_speaking(store: Store, tmp_path: obje
     await dispatcher.push(sub=sub, feed=feed, entries=entries, settings=_settings("silent"), stream_id="s1")
 
     assert ctx.mai_append_calls and ctx.mai_append_calls[0]["replyable"] is False
-    assert ctx.send.sent == []
-    assert ctx.mai_proactive_calls == []
-
-
-@pytest.mark.asyncio
-async def test_silent_mode_can_trigger_proactive_thinking(store: Store, tmp_path: object) -> None:
-    ctx = StubCtx(tmp_path)
-    feed, sub, entries = _fixtures(store)
-    dispatcher = Dispatcher(ctx, store, make_config(silent=SimpleNamespace(proactive_trigger=True)))
-
-    await dispatcher.push(sub=sub, feed=feed, entries=entries, settings=_settings("silent"), stream_id="s1")
-
-    assert len(ctx.mai_proactive_calls) == 1
+    assert ctx.send.sent == [], "注入模式不直接往会话发消息"
+    assert len(ctx.mai_proactive_calls) == 1, "注入模式每次都要请麦麦想一轮"

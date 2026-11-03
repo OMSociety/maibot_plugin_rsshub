@@ -190,7 +190,6 @@ def make_config(**overrides: object) -> SimpleNamespace:
             max_reference_chars=2000,
         ),
         persona=SimpleNamespace(format_instruction="随口分享"),
-        silent=SimpleNamespace(proactive_trigger=False),
         media=SimpleNamespace(
             max_images=3,
             image_max_mib=1,

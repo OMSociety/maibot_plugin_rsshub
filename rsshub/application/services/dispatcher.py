@@ -3,7 +3,7 @@
 条目送达后按条目写 push_history（每条记录存该条目自己的文本，重试时也只重发这一条）；
 再次推送同一条目前先查该订阅的成功记录，已送达的跳过，避免重试与重抓把内容发两遍。
 persona 模式复用宿主麦麦的人格与表达选择生成一段话再发出；生成失败按配置回退直推。
-silent 模式不主动说话，把内容注入麦麦的聊天上下文，可选再请求一轮主动思考。
+silent 模式把内容注入麦麦的聊天上下文（不直接发言），并固定请它主动思考一轮要不要分享。
 
 富媒体：正文图与封面图随消息发出，多图走合并转发，表格渲染成图片。
 音视频在后台推送里附链接行：宿主只为模型工具调用签发文件凭证，调度器推送没有凭证，
@@ -247,19 +247,19 @@ class Dispatcher:
                 replyable=False,
             )
         except Exception as exc:
-            self._ctx.logger.warning("RSS 静默注入失败: %s", exc)
+            self._ctx.logger.warning("RSS 注入失败: %s", exc)
             return False
 
-        if self._config.silent.proactive_trigger:
-            try:
-                await self._ctx.maisaka.proactive.trigger(
-                    stream_id,
-                    intent="订阅源有新内容，考虑是否主动分享给群友",
-                    reason="rsshub:silent_push",
-                    metadata={"entry_count": len(entries)},
-                )
-            except Exception as exc:
-                self._ctx.logger.warning("RSS 主动思考触发失败: %s", exc)
+        # 注入模式固定请麦麦想一轮：说不说由它自己决定，这里只负责把话头递过去。
+        try:
+            await self._ctx.maisaka.proactive.trigger(
+                stream_id,
+                intent="订阅源有新内容，考虑是否主动分享给群友",
+                reason="rsshub:silent_push",
+                metadata={"entry_count": len(entries)},
+            )
+        except Exception as exc:
+            self._ctx.logger.warning("RSS 主动思考触发失败: %s", exc)
         return True
 
     # ── 历史记录 ────────────────────────────────────────────────
