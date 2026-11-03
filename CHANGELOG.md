@@ -10,6 +10,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-03
+
+### 新增
+
+- WebUI 订阅列表提供已有会话下拉快选，批量导入不必手敲宿主内部的会话 ID；命中已知会话时，新订阅沿用该会话的可读标签与平台名
+
+### 修复
+
+- 停用的订阅重新出现在 WebUI 订阅列表与 `/列表` 里，卡片标「已停用」并可随时点「启用」；此前列表只查启用中的记录，停用后既看不到也恢复不了
+- 订阅间隔输入框清空即回落到继承上级默认（写入继承值），负数与超过 1440 分钟仍被拒绝
+
+### 变更
+
+- `webui_list_history` 返回可读的 `session_label`，推送历史卡片显示会话名而不是 32 位会话 ID
+- 推送历史的状态徽章、看板副标题、`/列表` 与 `/状态` 的推送模式改为中文（人格化 / 直推 / 注入）
+- 「下次抓取」与推送历史时间按浏览器本地时区显示，不再直接截 UTC 字符串
+- 搜索框改为输入即筛（250 毫秒防抖），分页按钮在首页与末页置灰；看板首屏不再常驻音视频能力说明，该说明保留在插件配置页
+
+### Added
+
+- The WebUI subscription list offers a picker of known sessions, so bulk import no longer needs the host's internal session id by hand; importing into a known session reuses its readable label and platform name
+
+### Fixed
+
+- Disabled subscriptions show up again in the WebUI list and `/列表`, marked as disabled and re-enableable; the list previously queried only active rows, so pausing a subscription hid it for good
+- Clearing the interval input now falls back to inheriting the upper level by writing the inherit value; negative values and anything above 1440 minutes are still rejected
+
+### Changed
+
+- `webui_list_history` returns a readable `session_label`, so history cards show the session name instead of a 32-character id
+- History status badges, the dashboard subtitle, and the push mode in `/列表` and `/状态` are rendered in Chinese (persona / direct / injection)
+- "Next fetch" and history timestamps are rendered in the browser's local time zone instead of a truncated UTC string
+- The search box filters as you type with a 250 ms debounce, pager buttons are disabled on the first and last page, and the dashboard no longer pins the audio/video capability note at the top (it stays on the plugin config page)
+
 ## [0.7.0] - 2026-11-03
 
 ### 新增
