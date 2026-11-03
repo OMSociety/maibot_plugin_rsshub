@@ -13,6 +13,7 @@ from rsshub.domain.settings import EffectiveSettings
 from rsshub.infrastructure.media.downloader import (
     SKIP_TIMEOUT,
     SKIP_TOO_LARGE,
+    SKIP_UNDECODABLE,
     FileAttachments,
     MediaDownloader,
     av_link_card_text,
@@ -102,6 +103,50 @@ async def test_slow_image_is_skipped_within_budget() -> None:
     assert bundle.skip_reasons == {SKIP_TIMEOUT: 1}, "超时要能被单独记下来，日志和回复才说得清原因"
     assert elapsed < 1.5
     assert all(call["timeout"] is not None for call in client.calls)
+
+
+@pytest.mark.asyncio
+async def test_time_budget_caps_total_wait() -> None:
+    """命令路径要留在宿主的 60 秒调用上限内：传入的整批预算压过配置里的默认值。"""
+    client = FakeClient(
+        payloads={"https://example.com/a.png": PNG, "https://example.com/b.png": PNG},
+        delays={"https://example.com/a.png": 3.0, "https://example.com/b.png": 3.0},
+    )
+    downloader = MediaDownloader(client, max_images=2, max_bytes=1024, timeout_seconds=30)
+
+    started = time.monotonic()
+    bundle = await downloader.collect(
+        [
+            _entry(
+                content_html=('<img src="https://example.com/a.png"><img src="https://example.com/b.png">'),
+            )
+        ],
+        time_budget=0.3,
+    )
+    elapsed = time.monotonic() - started
+
+    assert bundle.images == []
+    assert bundle.skip_reasons == {SKIP_TIMEOUT: 2}
+    assert elapsed < 1.5, "整批预算必须真的收窄，而不是等满配置里的 45 秒"
+
+
+@pytest.mark.asyncio
+async def test_undecodable_payload_is_reported_separately() -> None:
+    """content-type 说自己是图、字节却解不开时，原因要写「无法解码」而不是「压不进预算」。"""
+    client = FakeClient(
+        headers={"content-type": "image/jpeg"},
+        payloads={"https://example.com/broken.jpg": b"<html>challenge</html>" + b"0" * 2048},
+    )
+    downloader = MediaDownloader(client, max_images=1, max_bytes=1024 * 1024)
+
+    bundle = await downloader.collect(
+        [_entry(content_html='<img src="https://example.com/broken.jpg">')],
+        image_budget_bytes=1024,
+    )
+
+    assert bundle.images == []
+    assert bundle.skip_reasons == {SKIP_UNDECODABLE: 1}
+    assert "无法解码" in bundle.describe_skips()
 
 
 def test_media_budget_constants_fit_host_limits() -> None:

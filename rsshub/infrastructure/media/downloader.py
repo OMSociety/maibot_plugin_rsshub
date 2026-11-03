@@ -26,7 +26,7 @@ from bs4 import BeautifulSoup
 from ...domain.entry import Enclosure, Entry
 from ...errors import FeedFetchError, FeedTimeoutError
 from ..fetcher.client import HttpClient
-from .compressor import compress_image
+from .compressor import can_decode, compress_image
 
 # 单张图与整批图的下载上限：图片站（如 pixiv 原图）单张常达数 MB 到十几 MB，
 # 串行下载会把命令调用拖过宿主的 60 秒 RPC 超时。超时即跳过该图，推送继续。
@@ -44,6 +44,7 @@ SKIP_TIMEOUT = "下载超时"
 SKIP_NOT_IMAGE = "返回的不是图片"
 SKIP_TOO_LARGE = "超过单张大小上限"
 SKIP_HTTP = "站点没有正常返回"
+SKIP_UNDECODABLE = "图片无法解码"
 SKIP_COMPRESS = "压不进大小预算"
 SKIP_LIMIT = "超出张数上限"
 
@@ -70,10 +71,14 @@ class MediaBundle:
     audio_video_links: list[str] = field(default_factory=list)
     skipped: int = 0
     skip_reasons: dict[str, int] = field(default_factory=dict)
+    # 留几个具体地址，日志里能直接看出是哪张图、为什么没下来
+    skip_samples: list[str] = field(default_factory=list)
 
-    def note_skip(self, reason: str) -> None:
+    def note_skip(self, reason: str, url: str = "") -> None:
         self.skipped += 1
         self.skip_reasons[reason] = self.skip_reasons.get(reason, 0) + 1
+        if url and len(self.skip_samples) < 3:
+            self.skip_samples.append(f"{reason} {url}")
 
     def describe_skips(self) -> str:
         """把跳过原因拼成一句人话，例如「3 张（下载超时 3）」。"""
@@ -170,11 +175,19 @@ class MediaDownloader:
         self._timeout = float(timeout_seconds) if timeout_seconds else _IMAGE_TIMEOUT
         self._budget = self._timeout * _BATCH_TO_IMAGE_RATIO
 
-    async def collect(self, entries: list[Entry], *, image_budget_bytes: int | None = None) -> MediaBundle:
+    async def collect(
+        self,
+        entries: list[Entry],
+        *,
+        image_budget_bytes: int | None = None,
+        time_budget: float | None = None,
+    ) -> MediaBundle:
         """收集一批条目的图与音视频链接。
 
         ``image_budget_bytes`` 给出时按该预算压图（注入模式：图要留在聊天历史里），
         压不下去的图按跳过处理；不传则保留原图（直接发送的推送）。
+        ``time_budget`` 收紧这次收集的总预算：命令要走宿主的 60 秒调用上限，
+        比定时推送更需要早收手。
         """
         bundle = MediaBundle()
         candidates: list[str] = []
@@ -187,29 +200,37 @@ class MediaDownloader:
         if self._max_images == 0 or not candidates:
             # max_images=0 表示不带图：音视频链接行照旧给出，图片一张不取。
             return bundle
-        payloads = await self._download_batch(candidates[: self._max_images * 2], image_budget_bytes)
-        for payload, reason in payloads:
+        urls = candidates[: self._max_images * 2]
+        payloads = await self._download_batch(urls, image_budget_bytes, time_budget)
+        for url, (payload, reason) in zip(urls, payloads, strict=True):
             if payload is None:
-                bundle.note_skip(reason or SKIP_HTTP)
+                bundle.note_skip(reason or SKIP_HTTP, url)
             elif len(bundle.images) < self._max_images:
                 bundle.images.append(payload)
             else:
                 # 下载成功但因张数上限被丢掉的图，同样计入 skipped，避免日志口径失真
-                bundle.note_skip(SKIP_LIMIT)
+                bundle.note_skip(SKIP_LIMIT, url)
         return bundle
 
-    async def _download_batch(self, urls: list[str], budget: int | None = None) -> list[tuple[str | None, str]]:
+    async def _download_batch(
+        self,
+        urls: list[str],
+        budget: int | None = None,
+        time_budget: float | None = None,
+    ) -> list[tuple[str | None, str]]:
         """并发下载，超过整批预算就取消剩余任务；返回与 urls 等长的 (载荷, 跳过原因)。"""
         if not urls:
             return []
+        total = self._budget if time_budget is None else min(time_budget, self._budget)
+        per_image = min(self._timeout, total)
         gate = asyncio.Semaphore(_MAX_PARALLEL)
 
         async def one(url: str) -> tuple[str | None, str]:
             async with gate:
-                return await self._fetch_image(url, budget)
+                return await self._fetch_image(url, budget, per_image)
 
         tasks = {asyncio.create_task(one(url)): index for index, url in enumerate(urls)}
-        done, pending = await asyncio.wait(tasks, timeout=self._budget)
+        done, pending = await asyncio.wait(tasks, timeout=total)
         for task in pending:
             task.cancel()
         # 整批预算用尽时被取消的任务统一记作下载超时
@@ -220,9 +241,15 @@ class MediaDownloader:
             results[tasks[task]] = task.result()
         return results
 
-    async def _fetch_image(self, url: str, budget: int | None = None) -> tuple[str | None, str]:
+    async def _fetch_image(
+        self,
+        url: str,
+        budget: int | None = None,
+        timeout: float | None = None,
+    ) -> tuple[str | None, str]:
+        limit = self._timeout if timeout is None else timeout
         try:
-            result = await asyncio.wait_for(self._client.fetch(url, timeout=self._timeout), self._timeout + 1)
+            result = await asyncio.wait_for(self._client.fetch(url, timeout=limit), limit + 1)
         except (FeedTimeoutError, TimeoutError):
             return None, SKIP_TIMEOUT
         except FeedFetchError:
@@ -237,12 +264,12 @@ class MediaDownloader:
         if budget is not None:
             compressed = compress_image(payload, max_bytes=budget)
             if compressed is None:
-                return None, SKIP_COMPRESS
+                return None, _compress_failure_reason(payload)
             payload = compressed
         elif len(payload) > _SEND_BUDGET_BYTES:
             compressed = compress_image(payload, max_bytes=_SEND_BUDGET_BYTES)
             if compressed is None:
-                return None, SKIP_COMPRESS
+                return None, _compress_failure_reason(payload)
             payload = compressed
         return base64.b64encode(payload).decode("ascii"), ""
 
@@ -253,6 +280,11 @@ class MediaDownloader:
             return content_type in _IMAGE_TYPES or content_type.startswith("image/")
         head = payload[:12]
         return head.startswith((b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF", b"BM"))
+
+
+def _compress_failure_reason(payload: bytes) -> str:
+    """压不下去时区分「字节解不開」与「图本身压不小」，两者修法不同。"""
+    return SKIP_COMPRESS if can_decode(payload) else SKIP_UNDECODABLE
 
 
 def av_link_card_text(links: list[str], *, title: str = "") -> str:

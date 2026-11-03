@@ -56,6 +56,20 @@ def compress_image(
     return None
 
 
+def can_decode(payload: bytes) -> bool:
+    """判断这段字节能不能被 Pillow 解码，用来区分「压不小」与「根本不是图」。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return True
+    try:
+        with Image.open(io.BytesIO(payload)) as image:
+            image.load()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _flatten_alpha(image: Any) -> Any:
     """带透明通道的图铺白底再转 RGB，避免透明区域压成黑色。"""
     from PIL import Image

@@ -176,6 +176,8 @@ class RssCommandsMixin:
             settings=settings,
             stream_id=stream_id,
             record=False,
+            # 命令走宿主的 60 秒 plugin.invoke_command 上限：媒体最多 40 秒，留出抓取与回复的余量
+            media_time_budget=40.0,
         )
         if not report.delivered:
             await self._reply(stream_id, "推送失败，看宿主日志里的 rsshub 记录")

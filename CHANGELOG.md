@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复
 
-- 附图被跳过时写明原因（下载超时 / 遇到的上限 / 站点没正常返回），日志、`/测试推送` 的回复与注入模式的提示都带上这句，麦麦不再把「没有图」解释成插件没实现取图
+- 附图被跳过时写明原因（下载超时 / 遇到的上限 / 站点没正常返回 / 图片无法解码），日志、`/测试推送` 的回复与注入模式的提示都带上这句，麦麦不再把「没有图」解释成插件没实现取图
+- `/测试推送` 的媒体阶段最多等 40 秒：命令本身走宿主的 60 秒调用上限，此前按配置的整批预算等待会把命令拖到超时
 - `media.image_max_mib` 的上限从 20 放宽到 50；原图超过 8 MiB 时先压到 8 MiB 以内再发送，留在宿主单条消息上限之内
 
 ### Added
@@ -27,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Skipped attachments now carry a reason (download timed out / over a limit / site did not answer), surfaced in logs, in the `/测试推送` reply and in the injection notice, so the bot no longer explains a missing image as "the plugin cannot fetch images"
+- Skipped attachments now carry a reason (download timed out / over a limit / site did not answer / not decodable as an image), surfaced in logs, in the `/测试推送` reply and in the injection notice, so the bot no longer explains a missing image as "the plugin cannot fetch images"
+- The media phase of `/测试推送` waits at most 40 s: the command itself runs under the host's 60 s invocation limit, so waiting for the full configured budget used to time the command out
 - `media.image_max_mib` now accepts up to 50 (was 20); originals above 8 MiB are compressed below 8 MiB before sending, staying within the host's per-message limit
 
 ## [0.8.0] - 2026-11-03

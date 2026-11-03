@@ -99,6 +99,7 @@ class Dispatcher:
         mode_override: str | None = None,
         with_media: bool = True,
         extra_links: list[str] | None = None,
+        media_time_budget: float | None = None,
     ) -> bool:
         report = await self.push_report(
             sub=sub,
@@ -112,6 +113,7 @@ class Dispatcher:
             mode_override=mode_override,
             with_media=with_media,
             extra_links=extra_links,
+            media_time_budget=media_time_budget,
         )
         return report.delivered
 
@@ -129,6 +131,7 @@ class Dispatcher:
         mode_override: str | None = None,
         with_media: bool = True,
         extra_links: list[str] | None = None,
+        media_time_budget: float | None = None,
     ) -> PushReport:
         if not entries:
             return PushReport(delivered=True)
@@ -144,9 +147,9 @@ class Dispatcher:
             bundle = MediaBundle()
         elif mode == "silent":
             # 注入的图会留在聊天历史里，按上下文预算压缩后再注入
-            bundle = await self._collect_context_media(entries, settings)
+            bundle = await self._collect_context_media(entries, settings, media_time_budget)
         else:
-            bundle = await self._collect_media(entries, settings)
+            bundle = await self._collect_media(entries, settings, media_time_budget)
         media_elapsed = time.monotonic() - started
         report = PushReport(
             images=len(bundle.images),
@@ -185,7 +188,11 @@ class Dispatcher:
             delivered,
         )
         if bundle.skipped:
-            self._ctx.logger.info("RSS 附图跳过 %s", _describe_skips(bundle.skipped, bundle.skip_reasons))
+            self._ctx.logger.info(
+                "RSS 附图跳过 %s%s",
+                _describe_skips(bundle.skipped, bundle.skip_reasons),
+                f"；样例：{' | '.join(bundle.skip_samples)}" if bundle.skip_samples else "",
+            )
 
         if record:
             for entry in entries:
@@ -235,11 +242,16 @@ class Dispatcher:
 
     # ── 媒体 ────────────────────────────────────────────────────
 
-    async def _collect_media(self, entries: list[Entry], settings: EffectiveSettings) -> MediaBundle:
+    async def _collect_media(
+        self,
+        entries: list[Entry],
+        settings: EffectiveSettings,
+        time_budget: float | None = None,
+    ) -> MediaBundle:
         # display_media: 2 表示不带媒体，0/1 按上限带图。
         if settings.display_media == 2 or settings.display_media < 0 or self._downloader is None:
             return MediaBundle()
-        bundle = await self._downloader.collect(entries)
+        bundle = await self._downloader.collect(entries, time_budget=time_budget)
         media_cfg = getattr(self._config, "media", None)
         limit = int(getattr(media_cfg, "max_images", 0) or 0)
         if limit == 0:
@@ -253,11 +265,16 @@ class Dispatcher:
                 bundle.images.insert(0, rendered)
         return bundle
 
-    async def _collect_context_media(self, entries: list[Entry], settings: EffectiveSettings) -> MediaBundle:
+    async def _collect_context_media(
+        self,
+        entries: list[Entry],
+        settings: EffectiveSettings,
+        time_budget: float | None = None,
+    ) -> MediaBundle:
         """注入模式只取正文图与封面图：表格渲染与音视频链接不随注入进上下文。"""
         if settings.display_media == 2 or settings.display_media < 0 or self._downloader is None:
             return MediaBundle()
-        return await self._downloader.collect(entries, image_budget_bytes=CONTEXT_IMAGE_BYTES)
+        return await self._downloader.collect(entries, image_budget_bytes=CONTEXT_IMAGE_BYTES, time_budget=time_budget)
 
     # ── 三种发送形态 ────────────────────────────────────────────
 
