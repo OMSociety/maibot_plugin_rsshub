@@ -15,6 +15,7 @@ silent 模式把内容注入麦麦的聊天上下文（不直接发言），并�
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -366,10 +367,15 @@ class Dispatcher:
             return False
 
         # 注入模式固定请麦麦想一轮：说不说由它自己决定，这里只负责把话头递过去。
+        intent = (
+            "订阅源有新内容（已附带图片），若要向用户分享请调用 reply 并用 attach_pic 附上图片"
+            if images
+            else "订阅源有新内容，请结合上下文决定是否调用 reply 向用户分享"
+        )
         try:
             await self._ctx.maisaka.proactive.trigger(
                 stream_id,
-                intent="订阅源有新内容，考虑是否主动分享给群友",
+                intent=intent,
                 reason="rsshub:silent_push",
                 metadata={"entry_count": len(entries)},
             )
@@ -420,14 +426,17 @@ class Dispatcher:
 
 
 def _context_share_hint(message_id: str, image_count: int) -> str:
-    """告诉麦麦这张图挂在哪条消息上：宿主的 reply 工具按 msg_id + index 取图。"""
-    indices = "index=0" if image_count == 1 else f"index=0..{image_count - 1}"
-    return f'需要分享时可以把图一起带上：msg_id="{message_id}"，{indices}。'
+    """按宿主原生格式给出图片附件引用，供 Planner 调用 reply 时传入 attach_pic。"""
+    refs = json.dumps(
+        [{"msg_id": message_id, "index": index} for index in range(image_count)],
+        ensure_ascii=False,
+    )
+    return f"[图片附件引用] attach_pic={refs}（调用 reply 发送可见回复时，通过 attach_pic 附加上述图片）"
 
 
 def _context_missing_hint(report: PushReport) -> str:
-    """图没取到时同样给出结论：麦麦照这句回答，不会再说成「没挂抓图功能」。"""
-    return f"（本轮{report.describe_media()}）"
+    """附图未取到时给出客观原因，避免模型误判。"""
+    return f"[附图状态] 本轮{report.describe_media()}"
 
 
 def _context_image_segments(images: list[str], entries: list[Entry]) -> list[dict[str, Any]]:

@@ -102,3 +102,26 @@ async def test_tool_switch_refuses_calls_before_reload(tmp_path: object) -> None
     assert result["success"] is False
     assert "关闭" in result["content"]
     assert harness.store.repos.subs.list_by_session("s1") == []
+
+
+@pytest.mark.asyncio
+async def test_list_handlers_accepts_host_context_kwargs(tmp_path: object) -> None:
+    harness = _harness(tmp_path)
+
+    result = await harness.rss_list_handlers(stream_id="s1", user_id="u1")
+
+    assert result["success"] is True
+    assert "display_media" in result["content"]
+    assert "ai_filter" in result["content"]
+
+
+@pytest.mark.asyncio
+async def test_list_subscriptions_includes_media_status(tmp_path: object) -> None:
+    harness = _harness(tmp_path)
+    await harness.rss_subscribe(link="https://example.com/feed.xml", title="测试源", stream_id="s1", user_id="u1")
+
+    listed = await harness.rss_list_subscriptions(stream_id="s1")
+
+    assert listed["success"] is True
+    assert "配图=开启" in listed["content"]
+    assert "文本处理链=无" in listed["content"]

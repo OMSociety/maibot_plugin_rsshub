@@ -182,6 +182,7 @@ class SubscriptionService:
             "state": sub.state,
             "push_mode": settings.push_mode,
             "notify": settings.notify,
+            "display_media": settings.display_media,
             "interval_seconds": settings.interval_seconds,
             "handlers": [spec.get("type") for spec in settings.handlers],
             "next_check_at": sub.next_check_at,

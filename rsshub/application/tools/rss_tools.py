@@ -42,8 +42,9 @@ MAX_XML_NODES = 4096
 _OPTION_HELP = (
     "可选项：interval（轮询间隔，1-1440 分钟，0 继承默认）、notify（是否推送）、push_mode（persona/direct/silent）、"
     "length_limit（摘要长度上限，0 不限）、"
-    "display_author/display_title/display_entry_tags/display_media（0 自动、1 强制显示、2 强制隐藏；"
-    "display_media 的 2 表示不带图）、title（自定义标题）、tags（标签）"
+    "display_author/display_title/display_entry_tags（0 自动、1 强制显示、2 强制隐藏）、"
+    "display_media（配图提取：0 附带图片，1 仅在原文无图时补媒体摘要，2 不附图）、"
+    "title（自定义标题）、tags（标签）"
 )
 
 _HANDLER_TEMPLATE: dict[str, Any] = {
@@ -137,9 +138,11 @@ class RssToolsMixin:
         for sub in subs:
             info = self.sub_service.describe(sub, self.defaults)
             handlers = "、".join(info["handlers"]) or "无"
+            media_state = "关闭" if info.get("display_media") == 2 else "开启"
+            interval_min = info["interval_seconds"] // 60
             lines.append(
                 f"#{info['id']} {info['title'] or info['link']}\n"
-                f"  推送={info['push_mode']} 间隔={info['interval_seconds'] // 60}分钟 处理链={handlers}\n"
+                f"  推送={info['push_mode']} 配图={media_state} 间隔={interval_min}分钟 文本处理链={handlers}\n"
                 f"  下次抓取={info['next_check_at'] or '待定'}"
             )
         return {"success": True, "content": "\n".join(lines), "structured_content": {"count": len(subs)}}
@@ -351,13 +354,19 @@ class RssToolsMixin:
 
     # ── 内容处理链 ──────────────────────────────────────────────
 
-    @Tool("rss_list_handlers", description="列出内置的内容处理 handler 及其配置写法")
+    @Tool(
+        "rss_list_handlers",
+        description=(
+            "列出可用的 RSS 文本内容处理器（仅 ai_filter 过滤与 ai_transform 改写文本；"
+            "配图由 display_media 自动提取，无需 handler）"
+        ),
+    )
     @tools_enabled
-    async def rss_list_handlers(self) -> dict[str, Any]:
+    async def rss_list_handlers(self, **kwargs: Any) -> dict[str, Any]:
         return {
             "success": True,
             "content": (
-                "内置 handler：\n"
+                "可用 handler（仅处理文本过滤与改写；配图由 display_media 控制自动提取，不通过 handler 处理）：\n"
                 "1) ai_filter —— 让模型判断是否值得推送，只有明确 allow=false 才拦截\n"
                 "   配置：prompt（自定义提示词）、input_scope（text 或 raw_xml）、reason_max_length\n"
                 "2) ai_transform —— 让模型改写标题/摘要/正文（scope=plaintext）\n"
@@ -368,7 +377,7 @@ class RssToolsMixin:
 
     @Tool(
         "rss_get_handlers",
-        description="查看订阅或用户当前启用的内容处理链",
+        description="查看某条订阅或当前用户的 RSS 文本处理器链（仅处理文本过滤与改写，不控制配图）",
         parameters={
             "subscription_id": {"type": "integer", "description": "订阅编号，0 表示查看用户级", "required": False},
         },
@@ -403,7 +412,7 @@ class RssToolsMixin:
 
     @Tool(
         "rss_set_subscription_handlers",
-        description="设置某个订阅的内容处理链",
+        description="设置某个订阅的 RSS 文本处理器链（仅 ai_filter / ai_transform）",
         parameters={
             "subscription_id": {"type": "integer", "description": "订阅编号"},
             "handlers_json": {
@@ -433,7 +442,7 @@ class RssToolsMixin:
 
     @Tool(
         "rss_set_user_handlers",
-        description="设置当前用户的默认内容处理链，作用于所有继承用户的订阅",
+        description="设置当前用户的默认 RSS 文本处理器链，作用于所有继承用户的订阅",
         parameters={
             "handlers_json": {"type": "string", "description": "handler 数组的 JSON 文本；传 [] 清空"},
         },
