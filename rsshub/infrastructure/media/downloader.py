@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 from ...domain.entry import Enclosure, Entry
 from ...errors import FeedFetchError
 from ..fetcher.client import HttpClient
+from .compressor import compress_image
 
 # 单张图与整批图的下载上限：图片站（如 pixiv 原图）经常单张就上百 KB 到数 MB，
 # 串行下载会把命令调用拖过宿主的 60 秒 RPC 超时。超时即跳过该图，推送继续。
@@ -134,7 +135,12 @@ class MediaDownloader:
         self._max_images = max(0, max_images)
         self._max_bytes = max(0, max_bytes)
 
-    async def collect(self, entries: list[Entry]) -> MediaBundle:
+    async def collect(self, entries: list[Entry], *, image_budget_bytes: int | None = None) -> MediaBundle:
+        """收集一批条目的图与音视频链接。
+
+        ``image_budget_bytes`` 给出时按该预算压图（注入模式：图要留在聊天历史里），
+        压不下去的图按跳过处理；不传则保留原图（直接发送的推送）。
+        """
         bundle = MediaBundle()
         candidates: list[str] = []
         for entry in entries:
@@ -146,7 +152,7 @@ class MediaDownloader:
         if self._max_images == 0 or not candidates:
             # max_images=0 表示不带图：音视频链接行照旧给出，图片一张不取。
             return bundle
-        payloads = await self._download_batch(candidates[: self._max_images * 2])
+        payloads = await self._download_batch(candidates[: self._max_images * 2], image_budget_bytes)
         for payload in payloads:
             if payload is None:
                 bundle.skipped += 1
@@ -157,7 +163,7 @@ class MediaDownloader:
                 bundle.skipped += 1
         return bundle
 
-    async def _download_batch(self, urls: list[str]) -> list[str | None]:
+    async def _download_batch(self, urls: list[str], budget: int | None = None) -> list[str | None]:
         """并发下载，超过整批预算就取消剩余任务；返回与 urls 等长的结果列表。"""
         if not urls:
             return []
@@ -165,7 +171,7 @@ class MediaDownloader:
 
         async def one(url: str) -> str | None:
             async with gate:
-                return await self._fetch_image(url)
+                return await self._fetch_image(url, budget)
 
         tasks = {asyncio.create_task(one(url)): index for index, url in enumerate(urls)}
         done, pending = await asyncio.wait(tasks, timeout=_MEDIA_BUDGET)
@@ -178,7 +184,7 @@ class MediaDownloader:
             results[tasks[task]] = task.result()
         return results
 
-    async def _fetch_image(self, url: str) -> str | None:
+    async def _fetch_image(self, url: str, budget: int | None = None) -> str | None:
         try:
             result = await asyncio.wait_for(self._client.fetch(url, timeout=_IMAGE_TIMEOUT), _IMAGE_TIMEOUT + 1)
         except (FeedFetchError, TimeoutError):
@@ -189,7 +195,13 @@ class MediaDownloader:
             return None
         if not self._looks_like_image(result.content, result.headers):
             return None
-        return base64.b64encode(result.content).decode("ascii")
+        payload = result.content
+        if budget is not None:
+            compressed = compress_image(payload, max_bytes=budget)
+            if compressed is None:
+                return None
+            payload = compressed
+        return base64.b64encode(payload).decode("ascii")
 
     @staticmethod
     def _looks_like_image(payload: bytes, headers: dict[str, str]) -> bool:

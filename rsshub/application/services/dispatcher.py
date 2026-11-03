@@ -4,6 +4,8 @@
 再次推送同一条目前先查该订阅的成功记录，已送达的跳过，避免重试与重抓把内容发两遍。
 persona 模式复用宿主麦麦的人格与表达选择生成一段话再发出；生成失败按配置回退直推。
 silent 模式把内容注入麦麦的聊天上下文（不直接发言），并固定请它主动思考一轮要不要分享。
+注入的图片先压到上下文预算内，并挂一个稳定短消息 ID：麦麦据此把图引用进自己的回复，
+发不发由它决定。
 
 富媒体：正文图与封面图随消息发出，多图走合并转发，表格渲染成图片。
 音视频在后台推送里附链接行：宿主只为模型工具调用签发文件凭证，调度器推送没有凭证，
@@ -12,11 +14,13 @@ silent 模式把内容注入麦麦的聊天上下文（不直接发言），并�
 
 from __future__ import annotations
 
+import hashlib
 import time
 from typing import Any
 
 from ...domain.entry import Entry
 from ...domain.settings import EffectiveSettings
+from ...infrastructure.media.compressor import CONTEXT_IMAGE_BYTES
 from ...infrastructure.media.downloader import MediaBundle, MediaDownloader, av_link_card_text
 from ...infrastructure.persistence.models import Feed, PushHistory, Subscription
 from ...infrastructure.persistence.store import Store
@@ -24,6 +28,11 @@ from ...infrastructure.rendering.table import TableRenderer
 from .message_format import build_direct_text, build_entry_text, build_reference, segments_from_text
 
 PUSH_MODES = ("persona", "direct", "silent")
+
+# 注入消息的短 ID 长度：宿主对 ≤12 字符的 ID 原样展示，麦麦在回复里直接引用它取图。
+_CONTEXT_MESSAGE_ID_DIGITS = 8
+_CONTEXT_MESSAGE_ID_PREFIX = "rss"
+_CONTEXT_SHARE_HINT = "需要分享时可以把这张图一起发出来。"
 
 
 class Dispatcher:
@@ -75,18 +84,23 @@ class Dispatcher:
         mode = mode_override or (settings.push_mode if settings.push_mode in PUSH_MODES else "direct")
         direct_text = build_direct_text(feed_title, entries, settings)
         started = time.monotonic()
-        if not with_media or mode == "silent":
+        if not with_media:
             bundle = MediaBundle()
+        elif mode == "silent":
+            # 注入的图会留在聊天历史里，按上下文预算压缩后再注入
+            bundle = await self._collect_context_media(entries, settings)
         else:
             bundle = await self._collect_media(entries, settings)
         media_elapsed = time.monotonic() - started
         links = list(bundle.audio_video_links) + list(extra_links or [])
         if links:
             direct_text = f"{direct_text}\n{av_link_card_text(links)}"
+        if mode == "silent" and bundle.images:
+            direct_text = f"{direct_text}\n{_CONTEXT_SHARE_HINT}"
 
         send_started = time.monotonic()
         if mode == "silent":
-            delivered = await self._send_silent(stream_id, direct_text, entries)
+            delivered = await self._send_silent(stream_id, direct_text, entries, bundle.images)
         elif mode == "persona":
             delivered = await self._send_persona(stream_id, feed_title, entries, direct_text, bundle.images)
         else:
@@ -171,6 +185,12 @@ class Dispatcher:
                 bundle.images.insert(0, rendered)
         return bundle
 
+    async def _collect_context_media(self, entries: list[Entry], settings: EffectiveSettings) -> MediaBundle:
+        """注入模式只取正文图与封面图：表格渲染与音视频链接不随注入进上下文。"""
+        if settings.display_media == 2 or settings.display_media < 0 or self._downloader is None:
+            return MediaBundle()
+        return await self._downloader.collect(entries, image_budget_bytes=CONTEXT_IMAGE_BYTES)
+
     # ── 三种发送形态 ────────────────────────────────────────────
 
     async def _send_text(self, stream_id: str, text: str) -> bool:
@@ -237,13 +257,16 @@ class Dispatcher:
             return await self._send_rich(stream_id, direct_text, images)
         return False
 
-    async def _send_silent(self, stream_id: str, text: str, entries: list[Entry]) -> bool:
+    async def _send_silent(self, stream_id: str, text: str, entries: list[Entry], images: list[str]) -> bool:
+        segments = segments_from_text(text)
+        segments.extend(_context_image_segments(images, entries))
         try:
             await self._ctx.maisaka.context.append(
                 stream_id,
-                segments_from_text(text),
+                segments,
                 visible_text=entries[0].title if entries else "",
                 source_kind="rsshub",
+                message_id=_context_message_id(entries),
                 replyable=False,
             )
         except Exception as exc:
@@ -302,6 +325,21 @@ class Dispatcher:
         if feed is None:
             return f"sub:{sub.id}"
         return f"feed:{feed.id}:sub:{sub.id}"
+
+
+def _context_image_segments(images: list[str], entries: list[Entry]) -> list[dict[str, Any]]:
+    """注入用的图片段：宿主按 ``binary_data_base64`` 还原图片，``description`` 进图的说明。"""
+    if not images:
+        return []
+    description = entries[0].title if entries else ""
+    return [{"type": "image", "binary_data_base64": image, "description": description} for image in images]
+
+
+def _context_message_id(entries: list[Entry]) -> str:
+    """注入消息的稳定短 ID：麦麦在回复里引用它取图，长度控制在宿主原样展示的范围内。"""
+    seed = entries[0].dedup_key() if entries else ""
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:_CONTEXT_MESSAGE_ID_DIGITS]
+    return f"{_CONTEXT_MESSAGE_ID_PREFIX}{digest}"
 
 
 def _now() -> str:

@@ -10,6 +10,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-03
+
+### 新增
+
+- 注入模式带图：条目有新图时先压到 1 MiB 以内再注入上下文，注入消息带不超过 12 字符的消息 ID，麦麦的回复编排据此引用这幅图，发不发由它自己决定
+- 注入文本在带图时附一句提示，告诉麦麦可以把图一起发出来；只带正文图与封面图，表格渲染与音视频链接不随注入进上下文
+
+### 变更
+
+- `media.image_max_mib` 仍是下载门槛，注入路径在其之上再按 1 MiB 压缩；压不下去的图跳过并计入日志里的 `skipped`
+
+### Added
+
+- The injection mode now carries images: pictures are compressed to at most 1 MiB before entering the context, and each injected message gets a message id of at most 12 characters so MaiBot can reference the picture in its own reply and decide whether to send it
+- Injected text gains a neutral hint when a picture is attached; only body and cover images are injected, table renders and audio/video links stay out of the context
+
+### Changed
+
+- `media.image_max_mib` remains the download threshold; the injection path compresses further to 1 MiB and skips pictures that cannot fit, counting them in the logged `skipped`
+
 ## [0.6.0] - 2026-11-03
 
 ### 变更

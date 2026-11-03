@@ -67,7 +67,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 修改契约
 
-- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.3.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
+- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.4.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
 - 改能力调用：新增任何 `ctx.*` 能力调用，必须同步 `_manifest.json` 的 `capabilities`，否则运行期报 `E_CAPABILITY_DENIED`。
 - 改 `webui.json` 或绑定：宿主在插件注册时校验声明，无效会让整个插件注册失败；改完必须重载插件并确认日志没有「WebUI 声明无效」。
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。
@@ -112,6 +112,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 抓到的新条目一律并入 `entry_hashes`（源级已见集合），推送失败不回滚哈希 | 补发走 `push_history` 的失败记录；改投递逻辑时不要用哈希回滚来表达重试 |
 | `rsshub/application/services/dispatcher.py` | 推送历史按条目各存一份文本，发送前按（订阅, 条目）查成功记录做幂等 | 改推送或重试路径时保持「一次只发一条目文本」，并用 `retry_failed` 走补发 |
+| `rsshub/infrastructure/media/compressor.py` 与 `dispatcher._send_silent` | 注入的图会留在聊天历史里，按 1 MiB 预算压缩；注入消息带 ≤12 字符的 `message_id`，宿主的回复编排据此把图引用进麦麦的回复 | 改注入路径时保持「图片段与 message_id 在同一条注入消息里」，预算与 ID 长度不要放宽到宿主原样展示阈值之外 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
 | `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值；重命名字段后旧键仍留在文件里但不生效 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |
