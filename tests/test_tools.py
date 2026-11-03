@@ -19,6 +19,7 @@ XML = (
 
 class Harness(RssToolsMixin):
     def __init__(self, ctx: StubCtx, store: Store, config: object, client: FakeClient) -> None:
+        from rsshub.application.services.dispatcher import Dispatcher
         from rsshub.application.services.polling import build_defaults
 
         self.ctx = ctx
@@ -27,6 +28,7 @@ class Harness(RssToolsMixin):
         self.defaults = build_defaults(config)
         self.sub_service = SubscriptionService(ctx, store, config, client)
         self._client = client
+        self._dispatcher = Dispatcher(ctx, store, config, client)
         self.handler_chain = None
 
 

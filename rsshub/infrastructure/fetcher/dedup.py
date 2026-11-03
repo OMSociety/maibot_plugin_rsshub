@@ -1,7 +1,8 @@
 """条目去重哈希。
 
-与源插件同构：条目级稳定哈希（v3 前缀）+ 内容哈希；
-feed.entry_hashes 保存历史哈希，任一命中即视为旧条目。
+条目级稳定哈希（v3 前缀）+ 内容哈希；feed.entry_hashes 保存历史哈希，
+任一命中即视为旧条目。字段全空的条目用它在本次抓取里的位置兜底，
+避免所有空条目塌缩成同一个哈希。
 """
 
 from __future__ import annotations
@@ -24,20 +25,25 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def entry_hash_set(entry: Entry) -> list[str]:
-    """返回该条目的全部判重哈希。"""
+def entry_hash_set(entry: Entry, position: int | None = None) -> list[str]:
+    """返回该条目的全部判重哈希；position 是它在本次抓取结果里的序号。"""
+    slot = "" if position is None else f"#{position}"
     ident = entry.entry_id or entry.link or entry.title or entry.summary[:256]
+    if not ident:
+        ident = f"empty:{slot}"
     sid_payload = f"{HASH_PREFIX}|id={_normalize(ident)}"
     content_payload = (
         f"{HASH_PREFIX}|title={_normalize(entry.title)}"
         f"|link={_normalize(entry.link)}"
         f"|summary={_normalize(entry.summary)[:512]}"
     )
+    if not (entry.title or entry.link or entry.summary):
+        content_payload += f"|slot={slot}"
     return [f"sid:{_sha256(sid_payload)}", f"content:{_sha256(content_payload)}"]
 
 
-def is_known_entry(entry: Entry, known_hashes: set[str]) -> bool:
-    return any(item in known_hashes for item in entry_hash_set(entry))
+def is_known_entry(entry: Entry, known_hashes: set[str], position: int | None = None) -> bool:
+    return any(item in known_hashes for item in entry_hash_set(entry, position))
 
 
 def merge_hashes(known: list[str], new_hashes: list[str]) -> list[str]:

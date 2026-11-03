@@ -16,7 +16,7 @@ from ..constants import HANDLERS
 from ..errors import RsshubError
 
 _MAX_PAGE_SIZE = 100
-_VALID_STATUS = {"success", "failed", "stopped", "skipped", "pending", "retrying"}
+_VALID_STATUS = {"success", "failed", "stopped", "skipped"}
 
 
 def _iso(value: Any) -> str:
@@ -159,16 +159,23 @@ class WebApiMixin:
     async def webui_import_subscriptions(self, links: str = "", session: str = "", title: str = "") -> dict[str, Any]:
         if self.sub_service is None:
             raise RuntimeError("插件尚未加载")
-        imported, failed = 0, []
+        session = session.strip()
+        if not session:
+            raise ValueError("批量导入需要填目标会话 ID，否则订阅建立后没有推送对象")
+        imported, duplicated, failed = 0, 0, []
         for raw in [line.strip() for line in links.replace(",", "\n").splitlines()]:
             if not raw:
                 continue
             try:
-                await self.sub_service.subscribe(user_id="webui", raw_link=raw, stream_id=session, title=title)
-                imported += 1
+                result = await self.sub_service.subscribe(user_id="webui", raw_link=raw, stream_id=session, title=title)
             except (RsshubError, ValueError) as exc:
                 failed.append(f"{raw}: {exc}")
-        return {"imported": imported, "failed": failed}
+                continue
+            if result.created_subscription:
+                imported += 1
+            else:
+                duplicated += 1
+        return {"imported": imported, "duplicated": duplicated, "failed": failed}
 
     # ── 内部 ────────────────────────────────────────────────────
 

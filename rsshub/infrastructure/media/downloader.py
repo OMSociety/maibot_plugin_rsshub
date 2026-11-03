@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import re
 from dataclasses import dataclass, field
@@ -25,6 +26,12 @@ from bs4 import BeautifulSoup
 from ...domain.entry import Enclosure, Entry
 from ...errors import FeedFetchError
 from ..fetcher.client import HttpClient
+
+# 单张图与整批图的下载上限：图片站（如 pixiv 原图）经常单张就上百 KB 到数 MB，
+# 串行下载会把命令调用拖过宿主的 60 秒 RPC 超时。超时即跳过该图，推送继续。
+_IMAGE_TIMEOUT = 8.0
+_MEDIA_BUDGET = 12.0
+_MAX_PARALLEL = 3
 
 _IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/avif")
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".mov", ".m3u8")
@@ -129,25 +136,52 @@ class MediaDownloader:
 
     async def collect(self, entries: list[Entry]) -> MediaBundle:
         bundle = MediaBundle()
-        if self._max_images == 0:
-            return bundle
+        candidates: list[str] = []
         for entry in entries:
             images, av = collect_media_candidates(entry)
             bundle.audio_video_links.extend(url for url in av if url not in bundle.audio_video_links)
             for url in images:
-                if len(bundle.images) >= self._max_images:
-                    return bundle
-                payload = await self._fetch_image(url)
-                if payload is None:
-                    bundle.skipped += 1
-                    continue
+                if url not in candidates:
+                    candidates.append(url)
+        if self._max_images == 0 or not candidates:
+            # max_images=0 表示不带图：音视频链接行照旧给出，图片一张不取。
+            return bundle
+        payloads = await self._download_batch(candidates[: self._max_images * 2])
+        for payload in payloads:
+            if payload is None:
+                bundle.skipped += 1
+            elif len(bundle.images) < self._max_images:
                 bundle.images.append(payload)
+            else:
+                # 下载成功但因张数上限被丢掉的图，同样计入 skipped，避免日志口径失真
+                bundle.skipped += 1
         return bundle
+
+    async def _download_batch(self, urls: list[str]) -> list[str | None]:
+        """并发下载，超过整批预算就取消剩余任务；返回与 urls 等长的结果列表。"""
+        if not urls:
+            return []
+        gate = asyncio.Semaphore(_MAX_PARALLEL)
+
+        async def one(url: str) -> str | None:
+            async with gate:
+                return await self._fetch_image(url)
+
+        tasks = {asyncio.create_task(one(url)): index for index, url in enumerate(urls)}
+        done, pending = await asyncio.wait(tasks, timeout=_MEDIA_BUDGET)
+        for task in pending:
+            task.cancel()
+        results: list[str | None] = [None] * len(urls)
+        for task in done:
+            if task.cancelled() or task.exception() is not None:
+                continue
+            results[tasks[task]] = task.result()
+        return results
 
     async def _fetch_image(self, url: str) -> str | None:
         try:
-            result = await self._client.fetch(url)
-        except FeedFetchError:
+            result = await asyncio.wait_for(self._client.fetch(url, timeout=_IMAGE_TIMEOUT), _IMAGE_TIMEOUT + 1)
+        except (FeedFetchError, TimeoutError):
             return None
         if result.status != 200 or not result.content:
             return None
@@ -207,19 +241,22 @@ class FileAttachments:
         self._max_files = max(0, max_files)
         self._max_bytes = max(0, max_bytes)
 
-    async def deliver(self, links: list[str], directory: Path) -> int:
-        """返回成功送达的文件数；失败或超出上限的条目由调用方转成链接。"""
+    async def deliver(self, links: list[str], directory: Path) -> list[str]:
+        """返回成功送达的文件链接；失败或超出上限的条目由调用方转成链接行。
+
+        返回的是具体链接而不是数量：中间某条失败时，调用方仍能准确知道哪些还没送出。
+        """
         if not links or self._max_files == 0 or self._max_bytes == 0:
-            return 0
+            return []
         directory.mkdir(parents=True, exist_ok=True)
-        sent = 0
+        sent: list[str] = []
         for url in links[: self._max_files]:
             transfer = await self._download(url, directory)
             if transfer is None:
                 continue
             try:
                 if await self._send(transfer):
-                    sent += 1
+                    sent.append(url)
             finally:
                 transfer.path.unlink(missing_ok=True)
         return sent

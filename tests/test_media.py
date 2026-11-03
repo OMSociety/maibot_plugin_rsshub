@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import time
 
 import pytest
 
@@ -76,6 +77,31 @@ async def test_downloader_respects_limits_and_skips_oversized() -> None:
     assert len(bundle.images) == 1
     assert base64.b64decode(bundle.images[0]) == PNG
     assert bundle.skipped == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_image_is_skipped_within_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """慢图不能把整次推送拖过宿主的 RPC 上限：超时即跳过，其余图照常发出。"""
+    from rsshub.infrastructure.media import downloader as module
+
+    monkeypatch.setattr(module, "_IMAGE_TIMEOUT", 0.2)
+    monkeypatch.setattr(module, "_MEDIA_BUDGET", 0.4)
+    client = FakeClient(
+        payloads={"https://example.com/fast.png": PNG},
+        delays={"https://example.com/slow.jpg": 5.0},
+    )
+    downloader = MediaDownloader(client, max_images=3, max_bytes=1024)
+
+    started = time.monotonic()
+    bundle = await downloader.collect(
+        [_entry(content_html=('<img src="https://example.com/fast.png"><img src="https://example.com/slow.jpg">'))]
+    )
+    elapsed = time.monotonic() - started
+
+    assert len(bundle.images) == 1
+    assert bundle.skipped == 1
+    assert elapsed < 1.5
+    assert all(call["timeout"] is not None for call in client.calls)
 
 
 @pytest.fixture
@@ -181,7 +207,7 @@ async def test_file_attachments_upload_and_send(tmp_path: object) -> None:
 
     sent = await attachments.deliver(["https://example.com/ep.mp3"], tmp_path / "media")  # type: ignore[operator]
 
-    assert sent == 1
+    assert sent == ["https://example.com/ep.mp3"]
     assert ctx.files.uploads[0]["mime_type"] == "audio/mpeg"
     assert ctx.files.sent == [f"file://{ctx.files.uploads[0]['name']}"]
     assert not list((tmp_path / "media").iterdir())  # type: ignore[operator]
@@ -196,7 +222,7 @@ async def test_file_attachments_without_scope_returns_zero(tmp_path: object) -> 
 
     sent = await attachments.deliver(["https://example.com/ep.mp3"], tmp_path / "media")  # type: ignore[operator]
 
-    assert sent == 0
+    assert sent == []
     assert ctx.files.sent == []
     assert not list((tmp_path / "media").iterdir())  # type: ignore[operator]
 
@@ -222,5 +248,5 @@ async def test_file_attachments_respect_limits(tmp_path: object) -> None:
         tmp_path / "media",  # type: ignore[operator]
     )
 
-    assert sent == 1
+    assert sent == ["https://example.com/a.mp3"]
     assert len(ctx.files.uploads) == 1

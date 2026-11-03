@@ -53,13 +53,14 @@ async def test_subscribe_records_readable_session(tmp_path: object) -> None:
     store = Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]
     service = SubscriptionService(ctx, store, make_config(), FakeClient(content=RSS))
 
-    sub, _ = await service.subscribe(
+    result = await service.subscribe(
         user_id="u1",
         raw_link="https://e.com/feed.xml",
         stream_id="hash-session",
         platform="qq",
         group_id="1024",
     )
+    sub = result.sub
 
     assert sub.target_session == "hash-session"
     assert sub.session_label == "QQ群:1024"

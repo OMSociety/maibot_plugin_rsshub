@@ -4,7 +4,7 @@
 https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub
 衍生作品，遵循 AGPL-3.0 许可。
 
-组件：15 个 @Tool（LLM 主力交互）+ 5 个 @Command（高频命令）+ 8 个 WebUI @API。
+组件：15 个 @Tool（LLM 主力交互）+ 6 个 @Command（高频命令）+ 8 个 WebUI @API。
 逻辑下沉在 rsshub/ 各模块，本文件只做组件声明与薄转发。
 """
 
@@ -28,7 +28,7 @@ from .rsshub.application.services.scheduler import Scheduler
 from .rsshub.application.services.subscription_service import SubscriptionService
 from .rsshub.application.tools.rss_tools import RssToolsMixin
 from .rsshub.domain.settings import GlobalDefaults
-from .rsshub.infrastructure.fetcher.client import HttpClient
+from .rsshub.infrastructure.fetcher.client import HttpClient, socksio_available
 from .rsshub.infrastructure.persistence.store import Store
 from .rsshub.interfaces.web_api import WebApiMixin
 
@@ -310,7 +310,7 @@ class RsshubPluginConfig(PluginConfigBase):
 
 
 class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
-    """插件主类：薄入口，组件实现见 src/。"""
+    """插件主类：薄入口，组件实现见 rsshub/。"""
 
     config_model = RsshubPluginConfig
 
@@ -357,10 +357,12 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
     async def on_config_update(self, scope: str, config_data: dict, version: str) -> None:
         if scope != CONFIG_RELOAD_SCOPE_SELF:
             return
-        self.ctx.logger.info("RSSHub 配置更新到 %s，重建轮询与推送管线", version)
-        if self.store is None:
-            return
+        enabled = bool(self.config.plugin.enabled)
+        self.ctx.logger.info("RSSHub 配置更新到 %s（enabled=%s），重建轮询与推送管线", version, enabled)
         await self._teardown()
+        if not enabled:
+            self.ctx.logger.info("RSSHub 插件在配置中处于关闭状态，轮询已停止")
+            return
         self._boot()
 
     # ── 装配 ────────────────────────────────────────────────────
@@ -373,10 +375,16 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
         self.store = Store.open(self._db_path())
         self.defaults = build_defaults(config)
         proxy = str(config.network.proxy_url) if config.network.proxy_enabled else ""
+        if proxy.lower().startswith("socks") and not socksio_available():
+            self.ctx.logger.error(
+                "配置了 socks 代理但依赖 socksio 未安装，本次按直连处理；安装 httpx[socks] 并重载插件后生效"
+            )
+            proxy = ""
         self._client = HttpClient(
             timeout=float(config.polling.request_timeout),
             user_agent=str(config.polling.user_agent),
             proxy=proxy,
+            allow_private=bool(config.network.allow_private_addresses),
         )
         self.handler_chain = ContentHandlerChain(self.ctx)
         self._dispatcher = Dispatcher(self.ctx, self.store, config, self._client)

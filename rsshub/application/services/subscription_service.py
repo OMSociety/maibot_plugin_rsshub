@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from ...domain.settings import GlobalDefaults, resolve_settings
-from ...errors import InvalidFeedUrlError, SubscriptionNotFoundError
+from ...errors import SubscriptionNotFoundError
 from ...infrastructure.fetcher.client import HttpClient
 from ...infrastructure.fetcher.parser import parse_feed
-from ...infrastructure.fetcher.url_guard import normalize_feed_url
+from ...infrastructure.fetcher.url_guard import normalize_feed_url_async
 from ...infrastructure.persistence.models import Feed, Subscription, User
 from ...infrastructure.persistence.store import Store
 
@@ -19,15 +20,25 @@ SUB_OPTION_KEYS = frozenset(
         "push_mode",
         "length_limit",
         "display_author",
-        "display_via",
         "display_title",
         "display_entry_tags",
-        "style",
         "display_media",
         "title",
         "tags",
     }
 )
+
+INTERVAL_MINUTES_MIN = 1
+INTERVAL_MINUTES_MAX = 1440
+
+
+@dataclass
+class SubscribeResult:
+    """一次订阅请求的结果：区分「新建订阅」与「该源首次入库」。"""
+
+    sub: Subscription
+    created_subscription: bool
+    created_feed: bool
 
 
 def _session_label(platform: str, user_id: str, group_id: str, stream_id: str) -> str:
@@ -78,8 +89,8 @@ class SubscriptionService:
         group_id: str = "",
         title: str = "",
         tags: str = "",
-    ) -> tuple[Subscription, bool]:
-        link = normalize_feed_url(
+    ) -> SubscribeResult:
+        link = await normalize_feed_url_async(
             raw_link,
             allow_private=bool(self._config.network.allow_private_addresses),
             rsshub_base_url=str(self._config.rsshub.base_url),
@@ -95,7 +106,7 @@ class SubscriptionService:
 
         existing = self._store.repos.subs.get_by_user_feed_session(user_id, feed.id or 0, stream_id)
         if existing is not None:
-            return existing, False
+            return SubscribeResult(sub=existing, created_subscription=False, created_feed=created_feed)
 
         self._store.repos.users.get_or_create(user_id)
         sub = Subscription(
@@ -108,7 +119,7 @@ class SubscriptionService:
             session_label=_session_label(platform, user_id, group_id, stream_id),
         )
         sub = self._store.repos.subs.save(sub)
-        return sub, created_feed
+        return SubscribeResult(sub=sub, created_subscription=True, created_feed=created_feed)
 
     def unsubscribe(self, user_id: str, stream_id: str, sub_id: int | None = None) -> int:
         if sub_id is not None:
@@ -160,7 +171,8 @@ class SubscriptionService:
 
     def describe(self, sub: Subscription, defaults: GlobalDefaults) -> dict[str, Any]:
         user = self._store.repos.users.get(sub.user_id)
-        settings = resolve_settings(sub, user, defaults)
+        session = self._store.repos.session_defaults.get(sub.target_session or "")
+        settings = resolve_settings(sub, user, defaults, session)
         feed = self._store.repos.feeds.get(sub.feed_id)
         return {
             "id": sub.id,
@@ -206,10 +218,8 @@ def _column(key: str) -> str:
         "notify": "notify",
         "length_limit": "length_limit",
         "display_author": "display_author",
-        "display_via": "display_via",
         "display_title": "display_title",
         "display_entry_tags": "display_entry_tags",
-        "style": "style",
         "display_media": "display_media",
         "title": "title",
         "tags": "tags",
@@ -222,6 +232,9 @@ def _coerce(key: str, value: Any) -> Any:
     if key == "notify":
         return 1 if bool(value) else 0
     try:
-        return int(value)
+        number = int(value)
     except (TypeError, ValueError) as exc:
-        raise InvalidFeedUrlError(f"选项 {key} 需要整数，收到: {value!r}") from exc
+        raise ValueError(f"选项 {key} 需要整数，收到: {value!r}") from exc
+    if key == "interval" and not INTERVAL_MINUTES_MIN <= number <= INTERVAL_MINUTES_MAX:
+        raise ValueError(f"轮询间隔需要在 {INTERVAL_MINUTES_MIN}-{INTERVAL_MINUTES_MAX} 分钟之间，收到: {number}")
+    return number

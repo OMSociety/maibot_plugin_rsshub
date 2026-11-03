@@ -92,7 +92,8 @@ class Scheduler:
                         outcome.error or "-",
                     )
 
-        await asyncio.gather(*(run_group(feed, subs) for feed, subs in groups))
+        # 一组抛出的非 FeedFetchError 异常不应该吃掉同轮其它组的投递结果。
+        await asyncio.gather(*(run_group(feed, subs) for feed, subs in groups), return_exceptions=True)
 
     # ── 内部 ────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ class Scheduler:
         result: list[tuple[Feed, list[Subscription]]] = []
         for feed_id, subs in grouped.items():
             feed = self._store.repos.feeds.get(feed_id)
-            if feed is None or feed.state != 1:
+            if feed is None:
                 continue
             result.append((feed, subs))
         return result
@@ -129,5 +130,8 @@ class Scheduler:
             return
         self._last_purge_day = today
         removed = self._store.repos.history.purge_older_than(self.PURGE_DAYS)
-        if removed:
-            self._ctx.logger.info("RSS 清理 %s 天前推送历史 %d 条", self.PURGE_DAYS, removed)
+        orphan_feeds = self._store.repos.history.purge_orphan_feeds(self.PURGE_DAYS)
+        if removed or orphan_feeds:
+            self._ctx.logger.info(
+                "RSS 清理 %s 天前推送历史 %d 条、无订阅订阅源 %d 个", self.PURGE_DAYS, removed, orphan_feeds
+            )

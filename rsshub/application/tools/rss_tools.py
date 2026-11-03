@@ -17,12 +17,10 @@ from ...domain.settings import resolve_settings
 from ...errors import RsshubError
 from ...infrastructure.media.downloader import (
     FileAttachments,
-    av_link_card_text,
     collect_media_candidates,
 )
-from ...infrastructure.persistence.models import PushHistory
+from ...infrastructure.persistence.models import Subscription
 from ..services.content_handler import HandlerContext
-from ..services.message_format import build_direct_text
 
 
 def tools_enabled(func: Any) -> Any:
@@ -42,9 +40,10 @@ MAX_XML_BYTES = 256 * 1024
 MAX_XML_NODES = 4096
 
 _OPTION_HELP = (
-    "可选项：interval（轮询间隔，分钟）、notify（是否推送）、push_mode（persona/direct/silent）、"
-    "length_limit（摘要长度上限，0 不限）、display_author/display_via/display_title/display_entry_tags/style/"
-    "display_media（0 继承、1 显示、2 隐藏）、title（自定义标题）、tags（标签）"
+    "可选项：interval（轮询间隔，1-1440 分钟）、notify（是否推送）、push_mode（persona/direct/silent）、"
+    "length_limit（摘要长度上限，0 不限）、"
+    "display_author/display_title/display_entry_tags/display_media（0 自动、1 强制显示、2 强制隐藏；"
+    "display_media 的 2 表示不带图）、title（自定义标题）、tags（标签）"
 )
 
 _HANDLER_TEMPLATE: dict[str, Any] = {
@@ -80,7 +79,7 @@ class RssToolsMixin:
         if not link.strip():
             return {"success": False, "content": "请给出要订阅的 Feed 地址"}
         try:
-            sub, created = await self.sub_service.subscribe(
+            result = await self.sub_service.subscribe(
                 user_id=str(kwargs.get("user_id") or ""),
                 raw_link=link,
                 stream_id=stream_id,
@@ -91,12 +90,12 @@ class RssToolsMixin:
             )
         except RsshubError as exc:
             return {"success": False, "content": f"订阅失败：{exc}"}
-        if not created:
-            return {"success": True, "content": f"已经订阅过这个源（订阅 #{sub.id}），无需重复添加"}
+        if not result.created_subscription:
+            return {"success": True, "content": f"已经订阅过这个源（订阅 #{result.sub.id}），无需重复添加"}
         return {
             "success": True,
-            "content": f"已订阅「{sub.title or link}」（订阅 #{sub.id}），之后有新内容会推送到当前会话",
-            "structured_content": {"subscription_id": sub.id},
+            "content": f"已订阅「{result.sub.title or link}」（订阅 #{result.sub.id}），之后有新内容会推送到当前会话",
+            "structured_content": {"subscription_id": result.sub.id},
         }
 
     @Tool(
@@ -284,56 +283,64 @@ class RssToolsMixin:
         guid = f"agent:{hashlib.sha256(f'{source_key}|{title}|{xml}'.encode()).hexdigest()[:16]}"
         if self.store.repos.history.count_for_entry(guid, stream_id) > 0:
             return {"success": True, "content": "这条内容已经推送过，跳过"}
+        entry.guid = guid
 
-        sub = self.store.repos.subs.list_by_session(stream_id)
+        subs = self.store.repos.subs.list_by_session(stream_id)
         user_id = str(kwargs.get("user_id") or "")
         user = self.store.repos.users.get(user_id) if user_id else None
-        settings = resolve_settings(sub[0] if sub else None, user, self.defaults)
+        settings = resolve_settings(
+            subs[0] if subs else None,
+            user,
+            self.defaults,
+            self.store.repos.session_defaults.get(stream_id),
+        )
+        sub = (
+            subs[0]
+            if subs
+            else Subscription(
+                user_id=user_id,
+                feed_id=0,
+                title=source_key,
+                target_session=stream_id,
+                platform_name=str(kwargs.get("platform") or ""),
+            )
+        )
         av_links = collect_media_candidates(entry)[1] if settings.display_media >= 0 else []
-        attached = await self._attach_av_files(av_links)
-        text = build_direct_text(source_key, [entry], settings)
-        remaining = av_links[attached:]
-        if remaining:
-            text = f"{text}\n{av_link_card_text(remaining)}"
-        sent = await self.ctx.send.text(text, stream_id)
-        delivered = bool(sent.get("sent")) if isinstance(sent, dict) else bool(sent)
-        record = PushHistory(
-            user_id=str(kwargs.get("user_id") or ""),
+        delivered_files = await self._attach_av_files(av_links)
+        remaining = [url for url in av_links if url not in set(delivered_files)]
+        delivered = await self._dispatcher.push(
+            sub=sub,
+            feed=None,
+            entries=[entry],
+            settings=settings,
+            stream_id=stream_id,
             source_type="agent",
             source_key=source_key,
-            content=text,
-            raw_xml=xml,
-            entry_title=title,
-            entry_link=link,
-            entry_guid=guid,
-            feed_title=source_key,
-            platform_name=str(kwargs.get("platform") or ""),
-            target_session=stream_id,
-            status="success" if delivered else "failed",
-            fail_reason=None if delivered else "发送失败",
+            mode_override="direct",
+            with_media=False,
+            extra_links=remaining,
         )
-        self.store.repos.history.add(record)
         if not delivered:
             return {"success": False, "content": "推送发送失败，已记入历史等待重试"}
-        note = f"，附 {attached} 个音视频文件" if attached else ""
+        note = f"，附 {len(delivered_files)} 个音视频文件" if delivered_files else ""
         return {
             "success": True,
             "content": f"已推送到当前会话{note}",
-            "structured_content": {"history_id": record.id, "attachments": attached},
+            "structured_content": {"attachments": len(delivered_files)},
         }
 
-    async def _attach_av_files(self, links: list[str]) -> int:
-        """把音视频按原文件送达当前工具调用会话，返回成功的文件数。
+    async def _attach_av_files(self, links: list[str]) -> list[str]:
+        """把音视频按原文件送达当前工具调用会话，返回成功送达的链接。
 
         宿主只为模型工具调用签发文件凭证，因此该路径只在工具内可用；下载失败或超出
         数量/体积上限的条目由调用方改为在正文里附链接。
         """
         if not links:
-            return 0
+            return []
         media = getattr(self.config, "media", None)
         client = getattr(self, "_client", None)
         if media is None or client is None or not media.attach_files:
-            return 0
+            return []
         attachments = FileAttachments(
             self.ctx,
             client,
@@ -352,7 +359,7 @@ class RssToolsMixin:
             "content": (
                 "内置 handler：\n"
                 "1) ai_filter —— 让模型判断是否值得推送，只有明确 allow=false 才拦截\n"
-                "   配置：prompt（自定义提示词）、input_scope（text/raw_xml/both）、reason_max_length\n"
+                "   配置：prompt（自定义提示词）、input_scope（text 或 raw_xml）、reason_max_length\n"
                 "2) ai_transform —— 让模型改写标题/摘要/正文（scope=plaintext）\n"
                 "   配置：prompt（自定义提示词）\n\n"
                 "handler 数组按顺序执行，元素形如：\n" + json.dumps(_HANDLER_TEMPLATE, ensure_ascii=False, indent=2)
@@ -370,9 +377,9 @@ class RssToolsMixin:
     async def rss_get_handlers(self, subscription_id: int = 0, **kwargs: Any) -> dict[str, Any]:
         user_id = str(kwargs.get("user_id") or "")
         if subscription_id:
-            sub = self.store.repos.subs.get(subscription_id)
+            sub = self._owned_sub(subscription_id, user_id, str(kwargs.get("stream_id") or ""))
             if sub is None:
-                return {"success": False, "content": f"订阅不存在: {subscription_id}"}
+                return {"success": False, "content": f"订阅不存在或不属于当前会话: {subscription_id}"}
             return {
                 "success": True,
                 "content": json.dumps(
@@ -382,6 +389,17 @@ class RssToolsMixin:
         user = self.store.repos.users.get(user_id)
         handlers = user.handlers if user else []
         return {"success": True, "content": json.dumps(handlers, ensure_ascii=False, indent=2)}
+
+    def _owned_sub(self, sub_id: int, user_id: str, stream_id: str) -> Subscription | None:
+        """只允许操作属于调用者、且绑定当前会话的订阅。"""
+        sub = self.store.repos.subs.get(sub_id)
+        if sub is None:
+            return None
+        if user_id and sub.user_id != user_id:
+            return None
+        if stream_id and sub.target_session and sub.target_session != stream_id:
+            return None
+        return sub
 
     @Tool(
         "rss_set_subscription_handlers",
@@ -398,9 +416,9 @@ class RssToolsMixin:
     async def rss_set_subscription_handlers(
         self, subscription_id: int = 0, handlers_json: str = "", **kwargs: Any
     ) -> dict[str, Any]:
-        sub = self.store.repos.subs.get(subscription_id)
+        sub = self._owned_sub(subscription_id, str(kwargs.get("user_id") or ""), str(kwargs.get("stream_id") or ""))
         if sub is None:
-            return {"success": False, "content": f"订阅不存在: {subscription_id}"}
+            return {"success": False, "content": f"订阅不存在或不属于当前会话: {subscription_id}"}
         if handlers_json.strip().lower() in {"null", "inherit"}:
             self.store.repos.subs.update(sub.id, handlers_mode="inherit")
             return {"success": True, "content": "已改为继承用户级处理链"}

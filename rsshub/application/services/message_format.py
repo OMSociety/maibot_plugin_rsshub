@@ -32,6 +32,12 @@ def build_direct_text(feed_title: str, entries: list[Entry], settings: Effective
     return header + "\n\n" + "\n\n".join(blocks)
 
 
+def build_entry_text(feed_title: str, entry: Entry, settings: EffectiveSettings) -> str:
+    """单条目直推文本：重试与推送历史按条目存这一份，不存整批。"""
+    header = f"【{feed_title}】更新" if feed_title else "订阅更新"
+    return header + "\n\n" + _entry_block(entry, settings)
+
+
 def build_reference(feed_title: str, entries: list[Entry], max_chars: int) -> str:
     """人格化生成的写作材料：保留标题、摘要、正文片段、链接。"""
     parts: list[str] = []

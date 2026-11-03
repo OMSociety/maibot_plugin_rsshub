@@ -1,7 +1,8 @@
-"""三级配置继承解析：订阅 → 用户 → 全局默认。
+"""四级配置继承解析：订阅 → 会话默认 → 用户 → 全局默认。
 
 继承规则与源插件一致：字段值为 INHERIT_VALUE（-100）或 push_mode/handlers_mode
 为 'inherit' 时向上继承；handlers_mode 的 override 覆盖、disabled 表示停用全部 handler。
+会话默认值来自会话默认表（用户在某会话里设过的偏好），新订阅没写死字段时会用到它。
 """
 
 from __future__ import annotations
@@ -58,6 +59,20 @@ def _pick(*values: Any, default: Any) -> Any:
     return default
 
 
+def _session_value(session: dict[str, Any] | None, key: str) -> Any:
+    """会话默认表里的一项；没设过或存的是继承哨兵都返回 None。"""
+    if not session:
+        return None
+    value = session.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str) and value == INHERIT_MODE:
+        return None
+    if value == INHERIT_VALUE:
+        return None
+    return value
+
+
 def resolve_handlers(sub: Subscription | None, user: User | None) -> list[dict[str, Any]]:
     if sub is not None:
         if sub.handlers_mode == "disabled":
@@ -73,10 +88,12 @@ def resolve_settings(
     sub: Subscription | None,
     user: User | None,
     defaults: GlobalDefaults,
+    session: dict[str, Any] | None = None,
 ) -> EffectiveSettings:
     """逐字段解析生效配置。"""
     interval_minutes = _pick(
         sub.interval_minutes if sub else None,
+        _session_value(session, "interval"),
         user.interval_minutes if user else None,
         default=None,
     )
@@ -84,12 +101,14 @@ def resolve_settings(
 
     push_mode = _pick(
         sub.push_mode if sub else None,
+        _session_value(session, "push_mode"),
         user.push_mode if user else None,
         default=defaults.default_push_mode,
     )
 
     notify_value = _pick(
         sub.notify if sub else None,
+        _session_value(session, "notify"),
         user.notify if user else None,
         default=defaults.notify,
     )
@@ -101,6 +120,7 @@ def resolve_settings(
         length_limit=int(
             _pick(
                 sub.length_limit if sub else None,
+                _session_value(session, "length_limit"),
                 user.length_limit if user else None,
                 default=defaults.length_limit,
             )
@@ -108,6 +128,7 @@ def resolve_settings(
         display_author=int(
             _pick(
                 sub.display_author if sub else None,
+                _session_value(session, "display_author"),
                 user.display_author if user else None,
                 default=defaults.display_author,
             )
@@ -122,6 +143,7 @@ def resolve_settings(
         display_title=int(
             _pick(
                 sub.display_title if sub else None,
+                _session_value(session, "display_title"),
                 user.display_title if user else None,
                 default=defaults.display_title,
             )
@@ -129,6 +151,7 @@ def resolve_settings(
         display_entry_tags=int(
             _pick(
                 sub.display_entry_tags if sub else None,
+                _session_value(session, "display_entry_tags"),
                 user.display_entry_tags if user else None,
                 default=defaults.display_entry_tags,
             )
@@ -143,6 +166,7 @@ def resolve_settings(
         display_media=int(
             _pick(
                 sub.display_media if sub else None,
+                _session_value(session, "display_media"),
                 user.display_media if user else None,
                 default=defaults.display_media,
             )

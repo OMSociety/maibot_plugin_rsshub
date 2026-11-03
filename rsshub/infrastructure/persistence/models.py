@@ -37,7 +37,6 @@ class User:
 class Feed:
     link: str
     id: int | None = None
-    state: int = 1
     title: str = ""
     etag: str | None = None
     last_modified: str | None = None
@@ -131,7 +130,6 @@ def user_from_row(row: Any) -> User:
 def feed_from_row(row: Any) -> Feed:
     return Feed(
         id=row["id"],
-        state=row["state"],
         link=row["link"],
         title=row["title"],
         etag=row["etag"],

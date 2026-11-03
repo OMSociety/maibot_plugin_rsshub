@@ -84,34 +84,35 @@ class FeedPoller:
 
         known = set(feed.entry_hashes)
         bootstrap = not feed.entry_hashes
-        new_entries = [entry for entry in document.entries if not is_known_entry(entry, known)]
+        new_entries = [
+            entry for position, entry in enumerate(document.entries) if not is_known_entry(entry, known, position)
+        ]
         outcome.new_entries = len(new_entries)
 
         if bootstrap:
             # 首次抓取只建基线，不把历史条目全推一遍
             self._ctx.logger.info("RSS 首次抓取 %s，记录 %d 条基线", feed.link, len(new_entries))
-            self._persist_feed(feed, document, result, new_entries, push_ok=True)
+            self._persist_feed(feed, document, result, new_entries)
             self._advance_schedule(subs)
             return outcome
 
         limit = int(self._config.polling.max_entries_per_poll)
         new_entries.sort(key=lambda item: item.published or datetime.min.replace(tzinfo=UTC), reverse=True)
         selected = list(reversed(new_entries[:limit]))
-        all_ok = True
         for sub in subs:
             if sub.target_session is None:
                 continue
             user = self._store.repos.users.get(sub.user_id)
-            settings = resolve_settings(sub, user, self._defaults)
+            settings = resolve_settings(sub, user, self._defaults, self._session_defaults(sub.target_session))
             if not settings.notify:
                 continue
             delivered, filtered = await self._push_subscription(sub, document.title, selected, settings)
             outcome.delivered += delivered
             outcome.filtered += filtered
-            all_ok = all_ok and delivered + filtered == len(selected)
 
-        # 只有全部订阅都完成投递才推进 etag/哈希；否则下轮重抓，靠 push_history 幂等兜底
-        self._persist_feed(feed, document, result, new_entries, push_ok=all_ok)
+        # entry_hashes 是「这个源已经见过的条目」集合，抓到就合并；投递失败不靠它回滚，
+        # 而是由 push_history 的失败记录在重试通道里补发（每条记录只含该条目的文本）。
+        self._persist_feed(feed, document, result, new_entries)
         self._advance_schedule(subs)
         return outcome
 
@@ -137,7 +138,7 @@ class FeedPoller:
         filtered = 0
         for entry in entries:
             context = HandlerContext.from_entry(entry, feed_title=feed_title, feed_link=feed.link)
-            outcome = await self._handlers.run(settings.handlers, context, session_id=stream_id)
+            outcome = await self._handlers.run(settings.handlers, context)
             if not outcome.allow:
                 filtered += 1
                 self._record_skipped(sub, entry, outcome.trace)
@@ -147,6 +148,7 @@ class FeedPoller:
                 link=entry.link,
                 author=entry.author,
                 content=outcome.context.content,
+                content_html=outcome.context.content_html,
                 summary=outcome.context.summary,
                 guid=entry.guid,
                 entry_id=entry.entry_id,
@@ -189,21 +191,25 @@ class FeedPoller:
         )
         self._store.repos.history.add(record)
 
-    def _persist_feed(self, feed: Feed, document: Any, result: Any, entries: list[Entry], *, push_ok: bool) -> None:
+    def _persist_feed(self, feed: Feed, document: Any, result: Any, entries: list[Entry]) -> None:
         hashes: list[str] = []
-        for entry in entries:
-            hashes.extend(entry_hash_set(entry))
+        for position, entry in enumerate(entries):
+            hashes.extend(entry_hash_set(entry, position))
         feed.entry_hashes = merge_hashes(feed.entry_hashes, hashes)
         feed.title = feed.title or document.title
-        if push_ok:
-            feed.etag = result.headers.get("ETag") or feed.etag
-            feed.last_modified = result.headers.get("Last-Modified") or feed.last_modified
+        feed.etag = result.headers.get("ETag") or feed.etag
+        feed.last_modified = result.headers.get("Last-Modified") or feed.last_modified
         self._store.repos.feeds.save(feed)
 
     def _advance_schedule(self, subs: list[Subscription]) -> None:
         base_defaults = self._defaults
         for sub in subs:
             user = self._store.repos.users.get(sub.user_id)
-            settings = resolve_settings(sub, user, base_defaults)
+            settings = resolve_settings(sub, user, base_defaults, self._session_defaults(sub.target_session))
             next_at = (_now() + timedelta(seconds=settings.interval_seconds)).isoformat(timespec="seconds")
             self._store.repos.subs.update(sub.id, next_check_at=next_at)
+
+    def _session_defaults(self, stream_id: str | None) -> dict[str, Any]:
+        if not stream_id:
+            return {}
+        return self._store.repos.session_defaults.get(stream_id)

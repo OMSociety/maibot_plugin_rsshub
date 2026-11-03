@@ -93,7 +93,8 @@ async def test_list_and_unsub_commands(harness: Harness) -> None:
 
 @pytest.mark.asyncio
 async def test_set_option_and_session_defaults(harness: Harness) -> None:
-    sub, _ = await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    result = await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    sub = result.sub
 
     updated = harness.sub_service.set_subscription_option("u1", sub.id, "interval", "15")
 

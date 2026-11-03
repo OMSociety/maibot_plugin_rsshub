@@ -44,7 +44,7 @@ class RssCommandsMixin:
             await self._reply(stream_id, "用法：/sub <Feed 地址或 RSSHub 路由> [自定义标题]")
             return True, "缺少订阅地址", True
         try:
-            sub, created = await self.sub_service.subscribe(
+            result = await self.sub_service.subscribe(
                 user_id=str(kwargs.get("user_id") or ""),
                 raw_link=link,
                 stream_id=stream_id,
@@ -55,10 +55,10 @@ class RssCommandsMixin:
         except RsshubError as exc:
             await self._reply(stream_id, f"订阅失败：{exc}")
             return True, "订阅失败", True
-        if not created:
-            await self._reply(stream_id, f"已经订阅过这个源（订阅 #{sub.id}）")
+        if not result.created_subscription:
+            await self._reply(stream_id, f"已经订阅过这个源（订阅 #{result.sub.id}）")
             return True, "已存在", True
-        await self._reply(stream_id, f"已订阅「{sub.title or link}」（订阅 #{sub.id}）")
+        await self._reply(stream_id, f"已订阅「{result.sub.title or link}」（订阅 #{result.sub.id}）")
         return True, "订阅成功", True
 
     @Command("rss_unsub", description="取消订阅", pattern=r"^/(?:unsub|退订)(?:@\S+)?(?:\s+(?P<sub_id>\d+))?$")
@@ -153,11 +153,11 @@ class RssCommandsMixin:
 
         user_id = str(sub.user_id or "")
         user = self.store.repos.users.get(user_id) if user_id else None
-        settings = resolve_settings(sub, user, self.defaults)
+        settings = resolve_settings(sub, user, self.defaults, self.store.repos.session_defaults.get(stream_id))
         kept = []
         for entry in entries:
             context = HandlerContext.from_entry(entry, feed_title=feed.title or sub.title, feed_link=feed.link)
-            outcome = await self.handler_chain.run(settings.handlers, context, session_id=stream_id)
+            outcome = await self.handler_chain.run(settings.handlers, context)
             if outcome.allow:
                 kept.append(entry)
         if not kept:

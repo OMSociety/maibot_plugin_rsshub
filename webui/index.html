@@ -121,15 +121,15 @@
   </section>
 
   <section id="view-import" class="hidden">
-    <p class="maibot-muted">每行一个 Feed 地址或 RSSHub 路由；会话留空时仅入库，不推送。</p>
+    <p class="maibot-muted">每行一个 Feed 地址或 RSSHub 路由；目标会话必填，导入的订阅会推送到该会话。</p>
     <div class="form-grid">
       <div class="form-row">
-        <label class="maibot-muted" for="import-session">目标会话</label>
+        <label class="maibot-muted" for="import-session">目标会话（必填）</label>
         <input class="maibot-input" id="import-session" placeholder="例如 qq:group:123456">
       </div>
       <div class="form-row">
-        <label class="maibot-muted" for="import-title">标题前缀</label>
-        <input class="maibot-input" id="import-title" placeholder="可留空">
+        <label class="maibot-muted" for="import-title">统一标题</label>
+        <input class="maibot-input" id="import-title" placeholder="留空则用订阅源自己的标题">
       </div>
       <textarea class="maibot-input" id="import-links" placeholder="https://example.com/feed.xml&#10;/github/trending/daily"></textarea>
       <div><button class="maibot-button maibot-button-primary" id="do-import">导入</button></div>
@@ -358,15 +358,18 @@
     $('history-next').addEventListener('click', () => { if (state.history.page < state.history.pages) loadHistory(state.history.page + 1); });
     $('do-import').addEventListener('click', async () => {
       const links = $('import-links').value.trim();
+      const session = $('import-session').value.trim();
       if (!links) { banner('请先填写要导入的地址', true); return; }
+      if (!session) { banner('请填写目标会话 ID，否则订阅建立后没有推送对象', true); return; }
       try {
         const result = await maibot.action('import_subscriptions', {
           links,
-          session: $('import-session').value.trim(),
+          session,
           title: $('import-title').value.trim(),
         });
+        const duplicated = result.duplicated ? `，${result.duplicated} 条已存在` : '';
         const failed = result.failed && result.failed.length ? `；失败 ${result.failed.length} 条：${result.failed[0]}` : '';
-        banner(`已导入 ${result.imported} 条${failed}`, Boolean(result.failed && result.failed.length));
+        banner(`已导入 ${result.imported} 条${duplicated}${failed}`, Boolean(result.failed && result.failed.length));
         await Promise.all([loadOverview(), loadSubs(1)]);
       } catch (error) { fail(error); }
     });

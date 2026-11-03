@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime
 
 from .database import Database, utcnow
@@ -147,11 +148,18 @@ class FeedRepository:
     def save(self, feed: Feed) -> Feed:
         now = utcnow()
         if feed.id is None:
-            feed.id = self._db.execute(
-                "INSERT INTO rsshub_feeds(link, title, etag, last_modified, entry_hashes, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (feed.link, feed.title, feed.etag, feed.last_modified, _dump(feed.entry_hashes), now, now),
-            )
+            try:
+                feed.id = self._db.execute(
+                    "INSERT INTO rsshub_feeds(link, title, etag, last_modified, entry_hashes, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (feed.link, feed.title, feed.etag, feed.last_modified, _dump(feed.entry_hashes), now, now),
+                )
+            except sqlite3.IntegrityError:
+                # link 上有唯一约束：并发订阅同一地址时另一条已插入，取回现有行即可。
+                existing = self.get_by_link(feed.link)
+                if existing is None:
+                    raise
+                return existing
         else:
             self._db.execute(
                 "UPDATE rsshub_feeds SET title=?, etag=?, last_modified=?, entry_hashes=?, updated_at=? WHERE id=?",
@@ -375,7 +383,20 @@ class PushHistoryRepository:
 
     def purge_older_than(self, days: int) -> int:
         cursor = self._db.conn.execute(
-            "DELETE FROM rsshub_push_history WHERE created_at < datetime('now', ?)",
+            # created_at 是 ISO 格式（带 T），与 datetime('now') 的空白分隔直接比字符串会
+            # 在「恰好第 N 天」当天漏删，这里统一归一化后再比。
+            "DELETE FROM rsshub_push_history WHERE datetime(replace(created_at, 'T', ' ')) < datetime('now', ?)",
+            (f"-{days} days",),
+        )
+        self._db.conn.commit()
+        return cursor.rowcount or 0
+
+    def purge_orphan_feeds(self, days: int) -> int:
+        """清理没有任何订阅、且很久没有推送记录的订阅源行。"""
+        cursor = self._db.conn.execute(
+            "DELETE FROM rsshub_feeds WHERE id NOT IN (SELECT DISTINCT feed_id FROM rsshub_subs) "
+            "AND id NOT IN (SELECT DISTINCT feed_id FROM rsshub_push_history WHERE feed_id IS NOT NULL) "
+            "AND datetime(replace(updated_at, 'T', ' ')) < datetime('now', ?)",
             (f"-{days} days",),
         )
         self._db.conn.commit()

@@ -67,7 +67,9 @@ async def test_list_subscriptions_supports_keyword(harness: Harness) -> None:
 
 @pytest.mark.asyncio
 async def test_update_subscription_and_state(harness: Harness) -> None:
-    sub, _ = await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    sub = (
+        await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    ).sub
 
     updated = await harness.webui_update_subscription(sub_id=sub.id, key="interval", value="30")
     assert updated["value"] == 30
@@ -78,7 +80,9 @@ async def test_update_subscription_and_state(harness: Harness) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_subscription(harness: Harness) -> None:
-    sub, _ = await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    sub = (
+        await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    ).sub
 
     await harness.webui_delete_subscription(sub_id=sub.id)
 
@@ -87,7 +91,9 @@ async def test_delete_subscription(harness: Harness) -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_option_rejected(harness: Harness) -> None:
-    sub, _ = await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    sub = (
+        await harness.sub_service.subscribe(user_id="u1", raw_link="https://example.com/feed.xml", stream_id="s1")
+    ).sub
 
     with pytest.raises(ValueError):
         await harness.webui_update_subscription(sub_id=sub.id, key="nonsense", value="1")

@@ -1,16 +1,18 @@
 """推送执行：persona / direct / silent 三种模式与失败重试。
 
-推送语义（与源插件的差异见 README）：条目送达即写 push_history。
+条目送达后按条目写 push_history（每条记录存该条目自己的文本，重试时也只重发这一条）；
+再次推送同一条目前先查该订阅的成功记录，已送达的跳过，避免重试与重抓把内容发两遍。
 persona 模式复用宿主麦麦的人格与表达选择生成一段话再发出；生成失败按配置回退直推。
 silent 模式不主动说话，把内容注入麦麦的聊天上下文，可选再请求一轮主动思考。
 
-富媒体（二期）：正文图与封面图随消息发出，多图走合并转发，表格渲染成图片。
+富媒体：正文图与封面图随消息发出，多图走合并转发，表格渲染成图片。
 音视频在后台推送里附链接行：宿主只为模型工具调用签发文件凭证，调度器推送没有凭证，
 文件发送由工具侧的 ``_attach_av_files`` 承担。
 """
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from ...domain.entry import Entry
@@ -19,7 +21,7 @@ from ...infrastructure.media.downloader import MediaBundle, MediaDownloader, av_
 from ...infrastructure.persistence.models import Feed, PushHistory, Subscription
 from ...infrastructure.persistence.store import Store
 from ...infrastructure.rendering.table import TableRenderer
-from .message_format import build_direct_text, build_reference, segments_from_text
+from .message_format import build_direct_text, build_entry_text, build_reference, segments_from_text
 
 PUSH_MODES = ("persona", "direct", "silent")
 
@@ -52,39 +54,88 @@ class Dispatcher:
         self,
         *,
         sub: Subscription,
-        feed: Feed,
+        feed: Feed | None,
         entries: list[Entry],
         settings: EffectiveSettings,
         stream_id: str,
         record: bool = True,
+        source_type: str = "feed",
+        source_key: str | None = None,
+        mode_override: str | None = None,
+        with_media: bool = True,
+        extra_links: list[str] | None = None,
     ) -> bool:
         if not entries:
             return True
-        mode = settings.push_mode if settings.push_mode in PUSH_MODES else "direct"
-        direct_text = build_direct_text(feed.title or sub.title, entries, settings)
-        bundle = MediaBundle() if mode == "silent" else await self._collect_media(entries, settings)
-        if bundle.audio_video_links:
-            direct_text = f"{direct_text}\n{av_link_card_text(bundle.audio_video_links)}"
+        entries = [entry for entry in entries if not self._already_delivered(sub, entry)]
+        if not entries:
+            self._ctx.logger.info("RSS 推送跳过：这批条目在该会话已有成功记录 sub=%s", sub.id)
+            return True
+        feed_title = (feed.title if feed else "") or sub.title
+        mode = mode_override or (settings.push_mode if settings.push_mode in PUSH_MODES else "direct")
+        direct_text = build_direct_text(feed_title, entries, settings)
+        started = time.monotonic()
+        if not with_media or mode == "silent":
+            bundle = MediaBundle()
+        else:
+            bundle = await self._collect_media(entries, settings)
+        media_elapsed = time.monotonic() - started
+        links = list(bundle.audio_video_links) + list(extra_links or [])
+        if links:
+            direct_text = f"{direct_text}\n{av_link_card_text(links)}"
 
+        send_started = time.monotonic()
         if mode == "silent":
             delivered = await self._send_silent(stream_id, direct_text, entries)
         elif mode == "persona":
-            delivered = await self._send_persona(stream_id, feed, entries, direct_text, bundle.images)
+            delivered = await self._send_persona(stream_id, feed_title, entries, direct_text, bundle.images)
         else:
             delivered = await self._send_rich(stream_id, direct_text, bundle.images)
+        send_elapsed = time.monotonic() - send_started
+
+        # 媒体与发送分两段计时：慢图与超时是这条链上最难从外部看到的耗时来源。
+        self._ctx.logger.info(
+            "RSS 推送 mode=%s entries=%d images=%d skipped=%d media=%.1fs send=%.1fs ok=%s",
+            mode,
+            len(entries),
+            len(bundle.images),
+            bundle.skipped,
+            media_elapsed,
+            send_elapsed,
+            delivered,
+        )
 
         if record:
             for entry in entries:
-                self._record(sub, feed, entry, direct_text, stream_id, delivered)
+                text = build_entry_text(feed_title, entry, settings)
+                self._record(
+                    sub,
+                    feed,
+                    entry,
+                    text,
+                    stream_id,
+                    delivered,
+                    source_type=source_type,
+                    source_key=source_key or self._default_source_key(feed, sub),
+                )
         return delivered
 
+    def _already_delivered(self, sub: Subscription, entry: Entry) -> bool:
+        if sub.id is None or not sub.target_session:
+            return False
+        return self._store.repos.history.count_for_entry(entry.dedup_key(), sub.target_session) > 0
+
     async def retry_failed(self, limit: int = 50) -> int:
-        """重发失败记录（直推内容原文重发）。"""
+        """重发失败记录：每条记录存的是单条目文本，这里也只重发这一条。"""
         records = self._store.repos.history.list_retryable(limit)
         recovered = 0
         for record in records:
             if not record.target_session:
                 self._store.repos.history.update(record.id, status="stopped", fail_reason="缺少目标聊天流")
+                continue
+            if record.sub_id is not None and self._store.repos.subs.get(record.sub_id) is None:
+                # 订阅已被删除，不再往旧会话重发
+                self._store.repos.history.update(record.id, status="stopped", fail_reason="订阅已删除")
                 continue
             if await self._send_text(record.target_session, record.content):
                 self._store.repos.history.update(record.id, status="success", fail_reason=None, completed_at=_now())
@@ -103,13 +154,17 @@ class Dispatcher:
     # ── 媒体 ────────────────────────────────────────────────────
 
     async def _collect_media(self, entries: list[Entry], settings: EffectiveSettings) -> MediaBundle:
-        if settings.display_media < 0 or self._downloader is None:
+        # display_media: 2 表示不带媒体，0/1 按上限带图。
+        if settings.display_media == 2 or settings.display_media < 0 or self._downloader is None:
             return MediaBundle()
         bundle = await self._downloader.collect(entries)
         media_cfg = getattr(self._config, "media", None)
         limit = int(getattr(media_cfg, "max_images", 0) or 0)
+        if limit == 0:
+            # 张数上限为 0 即不带任何图片，表格也不再渲染成图
+            return bundle
         for entry in entries:
-            if limit and len(bundle.images) >= limit:
+            if len(bundle.images) >= limit:
                 break
             rendered = await self._tables.render(entry.content_html)
             if rendered:
@@ -156,10 +211,10 @@ class Dispatcher:
             return await self._send_hybrid(stream_id, text, images)
 
     async def _send_persona(
-        self, stream_id: str, feed: Feed, entries: list[Entry], direct_text: str, images: list[str]
+        self, stream_id: str, feed_title: str, entries: list[Entry], direct_text: str, images: list[str]
     ) -> bool:
         push_cfg = self._config.push
-        reference = build_reference(feed.title, entries, int(push_cfg.max_reference_chars))
+        reference = build_reference(feed_title, entries, int(push_cfg.max_reference_chars))
         try:
             result = await self._ctx.maisaka.reply.generate(
                 stream_id,
@@ -212,25 +267,28 @@ class Dispatcher:
     def _record(
         self,
         sub: Subscription,
-        feed: Feed,
+        feed: Feed | None,
         entry: Entry,
         content: str,
         stream_id: str,
         delivered: bool,
+        *,
+        source_type: str = "feed",
+        source_key: str = "",
     ) -> None:
         record = PushHistory(
             user_id=sub.user_id,
             sub_id=sub.id,
-            feed_id=feed.id,
-            source_type="feed",
-            source_key=f"feed:{feed.id}:sub:{sub.id}",
+            feed_id=feed.id if feed else None,
+            source_type=source_type,
+            source_key=source_key,
             content=content,
             raw_xml=entry.raw_xml,
             entry_title=entry.title,
             entry_link=entry.link,
             entry_guid=entry.dedup_key(),
-            feed_title=feed.title or sub.title,
-            feed_link=feed.link,
+            feed_title=(feed.title if feed else "") or sub.title,
+            feed_link=feed.link if feed else "",
             platform_name=sub.platform_name,
             target_session=stream_id,
             status="success" if delivered else "failed",
@@ -238,6 +296,12 @@ class Dispatcher:
             max_retries=3,
         )
         self._store.repos.history.add(record)
+
+    @staticmethod
+    def _default_source_key(feed: Feed | None, sub: Subscription) -> str:
+        if feed is None:
+            return f"sub:{sub.id}"
+        return f"feed:{feed.id}:sub:{sub.id}"
 
 
 def _now() -> str:

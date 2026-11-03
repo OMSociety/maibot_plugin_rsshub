@@ -27,12 +27,16 @@ class StubLogger:
 
 
 class StubSend:
-    def __init__(self) -> None:
+    def __init__(self, fail_text: int = 0) -> None:
         self.sent: list[tuple[str, str]] = []
         self.hybrid_calls: list[dict] = []
         self.forward_calls: list[dict] = []
+        self.fail_text = fail_text
 
     async def text(self, text: str, stream_id: str, **kwargs: object) -> bool:
+        if self.fail_text > 0:
+            self.fail_text -= 1
+            return False
         self.sent.append((stream_id, text))
         return True
 
@@ -48,9 +52,9 @@ class StubSend:
 class StubCtx:
     """提供 send / logger / paths / llm / maisaka 的最小上下文。"""
 
-    def __init__(self, data_dir: Path, reply_text: str = "顺手分享一条订阅更新") -> None:
+    def __init__(self, data_dir: Path, reply_text: str = "顺手分享一条订阅更新", fail_text: int = 0) -> None:
         self.logger = StubLogger()
-        self.send = StubSend()
+        self.send = StubSend(fail_text=fail_text)
         self.paths = SimpleNamespace(data_dir=data_dir, runtime_dir=data_dir / "tmp")
         self.response = reply_text
         self.llm_calls: list[dict] = []
@@ -124,18 +128,30 @@ class FakeClient:
         status: int = 200,
         headers: dict[str, str] | None = None,
         payloads: dict[str, bytes] | None = None,
+        delays: dict[str, float] | None = None,
     ) -> None:
         self.content = content
         self.url = url
         self.status = status
         self.headers = headers or {}
         self.payloads = payloads or {}
+        self.delays = delays or {}
         self.calls: list[dict] = []
 
-    async def fetch(self, url: str, etag: str | None = None, last_modified: object = None) -> object:
+    async def fetch(
+        self,
+        url: str,
+        etag: str | None = None,
+        last_modified: object = None,
+        timeout: float | None = None,
+    ) -> object:
+        import asyncio
+
         from rsshub.infrastructure.fetcher.client import FetchResult
 
-        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified})
+        self.calls.append({"url": url, "etag": etag, "last_modified": last_modified, "timeout": timeout})
+        if url in self.delays:
+            await asyncio.sleep(self.delays[url])
         if url in self.payloads:
             return FetchResult(
                 url=url, status=200, content=self.payloads[url], headers=self.headers, not_modified=False

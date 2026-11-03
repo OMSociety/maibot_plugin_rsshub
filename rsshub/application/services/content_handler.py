@@ -40,6 +40,7 @@ class HandlerContext:
     title: str = ""
     summary: str = ""
     content: str = ""
+    content_html: str = ""
     link: str = ""
     author: str = ""
     feed_title: str = ""
@@ -54,6 +55,7 @@ class HandlerContext:
             title=entry.title,
             summary=entry.summary,
             content=entry.content,
+            content_html=entry.content_html,
             link=entry.link,
             author=entry.author,
             feed_title=feed_title,
@@ -97,6 +99,25 @@ def _parse_json_object(text: str) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+_TRUE_WORDS = frozenset({"true", "yes", "1", "allow", "是"})
+_FALSE_WORDS = frozenset({"false", "no", "0", "deny", "否"})
+
+
+def _as_bool(value: Any) -> bool | None:
+    """把模型给的布尔判定收敛成 True/False；认不出来返回 None（调用方按默认放行）。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _TRUE_WORDS:
+            return True
+        if text in _FALSE_WORDS:
+            return False
+    return None
+
+
 class ContentHandlerChain:
     """执行一条订阅的内容处理链。"""
 
@@ -107,8 +128,6 @@ class ContentHandlerChain:
         self,
         handlers: list[dict[str, Any]],
         context: HandlerContext,
-        *,
-        session_id: str = "",
     ) -> HandlerOutcome:
         trace: list[dict[str, Any]] = []
         if not handlers:
@@ -128,14 +147,14 @@ class ContentHandlerChain:
             config = spec.get("config") if isinstance(spec.get("config"), dict) else {}
             try:
                 if handler_type == "ai_filter":
-                    allow, reason = await self._run_filter(config, current, session_id)
+                    allow, reason = await self._run_filter(config, current)
                     trace.append(
                         {"type": handler_type, "status": "ok", "action": "allow" if allow else "deny", "reason": reason}
                     )
                     if not allow:
                         return HandlerOutcome(allow=False, context=current, trace=trace)
                 else:
-                    current, applied = await self._run_transform(config, current, session_id)
+                    current, applied = await self._run_transform(config, current)
                     trace.append({"type": handler_type, "status": "ok" if applied else "noop"})
             except Exception as exc:
                 self._ctx.logger.warning("RSS handler %s 执行失败: %s", handler_type, exc)
@@ -144,7 +163,7 @@ class ContentHandlerChain:
 
         return HandlerOutcome(allow=True, context=current, trace=trace)
 
-    async def _generate(self, prompt: str, session_id: str) -> str:
+    async def _generate(self, prompt: str) -> str:
         result = await self._ctx.llm.generate(prompt)
         if not isinstance(result, dict):
             return ""
@@ -152,7 +171,7 @@ class ContentHandlerChain:
             return ""
         return str(result.get("response") or "")
 
-    async def _run_filter(self, config: dict[str, Any], context: HandlerContext, session_id: str) -> tuple[bool, str]:
+    async def _run_filter(self, config: dict[str, Any], context: HandlerContext) -> tuple[bool, str]:
         template = str(config.get("prompt") or _FILTER_PROMPT)
         scope = str(config.get("input_scope") or "text")
         prompt = _render_prompt(template, context)
@@ -161,23 +180,22 @@ class ContentHandlerChain:
                 _render_prompt(template, HandlerContext(raw_xml=context.raw_xml)) + "\n\n原始 XML：\n" + context.raw_xml
             )
 
-        response = await self._generate(prompt, session_id)
+        response = await self._generate(prompt)
         parsed = _parse_json_object(response) if response else None
-        if parsed is None or not isinstance(parsed.get("allow"), bool):
+        decision = _as_bool(parsed.get("allow")) if parsed else None
+        if decision is None:
             return True, "模型未给出有效判定，默认放行"
         reason = str(parsed.get("reason") or "")
         limit = int(config.get("reason_max_length") or DEFAULT_REASON_MAX_CHARS)
-        return bool(parsed["allow"]), reason[:limit]
+        return decision, reason[:limit]
 
-    async def _run_transform(
-        self, config: dict[str, Any], context: HandlerContext, session_id: str
-    ) -> tuple[HandlerContext, bool]:
+    async def _run_transform(self, config: dict[str, Any], context: HandlerContext) -> tuple[HandlerContext, bool]:
         if str(config.get("scope") or "plaintext") != "plaintext":
             self._ctx.logger.info("RSS ai_transform 的 xml 作用域本移植不支持，跳过该 handler")
             return context, False
 
         template = str(config.get("prompt") or _TRANSFORM_PROMPT)
-        response = await self._generate(_render_prompt(template, context), session_id)
+        response = await self._generate(_render_prompt(template, context))
         parsed = _parse_json_object(response) if response else None
         if parsed is None:
             return context, False
