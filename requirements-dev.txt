@@ -7,3 +7,6 @@ ruff==0.15.22
 
 # 宿主自带 httpx，仓库只跑测试时需要显式安装（含 socks 支持）
 httpx[socks]>=0.28.1
+
+# 宿主自带 Pillow，CI 跑注入压缩相关测试时要显式安装
+pillow>=10.0
