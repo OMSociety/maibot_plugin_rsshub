@@ -112,6 +112,38 @@ def test_media_budget_constants_fit_host_limits() -> None:
     assert module._MEDIA_BUDGET <= module._IMAGE_TIMEOUT * 2, "整批预算不该远超单图预算"
     assert module._MEDIA_BUDGET < 60, "整批预算必须留在宿主 60 秒 RPC 上限以内"
     assert 1 <= module._MAX_PARALLEL <= 5
+    assert module._SEND_BUDGET_BYTES * 4 // 3 < 16 * 1024 * 1024, "base64 膨胀后必须仍小于宿主 16 MiB 单帧上限"
+
+
+@pytest.mark.asyncio
+async def test_oversized_image_is_compressed_before_send(monkeypatch: pytest.MonkeyPatch) -> None:
+    """下载门槛调高后，超过通道预算的原图要先压小再发，否则整条消息发不出去。"""
+    import io
+    import os
+
+    from PIL import Image
+
+    from rsshub.infrastructure.media import downloader as module
+
+    monkeypatch.setattr(module, "_SEND_BUDGET_BYTES", 200_000)
+    # 随机像素保证 PNG 压不动，用来模拟真实站点的大图。
+    image = Image.frombytes("RGB", (1200, 1200), os.urandom(1200 * 1200 * 3))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    original = buffer.getvalue()
+    assert len(original) > 200_000
+
+    downloader = MediaDownloader(
+        FakeClient(payloads={"https://example.com/big.png": original}),
+        max_images=1,
+        max_bytes=50 * 1024 * 1024,
+    )
+    bundle = await downloader.collect([_entry(content_html='<img src="https://example.com/big.png">')])
+
+    assert len(bundle.images) == 1
+    sent = base64.b64decode(bundle.images[0])
+    assert len(sent) <= 200_000
+    assert sent.startswith(b"\xff\xd8"), "压缩产物应是 JPEG"
 
 
 @pytest.fixture

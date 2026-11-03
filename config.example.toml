@@ -31,7 +31,8 @@ format_instruction = """你是群里的熟人，刚看到这些订阅更新，�
 
 [media]
 max_images = 3
-# 下载门槛；注入模式会在该门槛内再把图压到 1 MiB
+# 下载门槛，1-50；超过的图跳过。注入模式会在该门槛内再把图压到 1 MiB，
+# 直接发送的推送则把超过 8 MiB 的原图压到 8 MiB 以内（宿主单条消息上限 16 MiB）
 image_max_mib = 8
 table_render_enabled = true
 multi_image_forward = true

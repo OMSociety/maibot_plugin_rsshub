@@ -220,9 +220,12 @@ class MediaSection(PluginConfigBase):
     image_max_mib: int = Field(
         default=8,
         ge=1,
-        le=20,
+        le=50,
         description="单张图片允许下载的大小上限，单位 MiB",
-        json_schema_extra={"label": "单张图片上限（MiB）", "hint": "超过的图直接跳过，不影响文字推送"},
+        json_schema_extra={
+            "label": "单张图片上限（MiB）",
+            "hint": "超过的图直接跳过；原图超过 8 MiB 时会先压小再发送，避免超出宿主单条消息上限",
+        },
     )
     table_render_enabled: bool = Field(
         default=True,

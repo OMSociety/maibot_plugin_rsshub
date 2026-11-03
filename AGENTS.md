@@ -114,6 +114,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `rsshub/application/services/dispatcher.py` | 推送历史按条目各存一份文本，发送前按（订阅, 条目）查成功记录做幂等 | 改推送或重试路径时保持「一次只发一条目文本」，并用 `retry_failed` 走补发 |
 | `rsshub/infrastructure/persistence/repositories.py` 的 `list_active` / `list_all` | 调度器与概览只取 `list_active()`（`state=1`），WebUI 订阅列表与历史会话名取 `list_all()`；停用只改 `state`，删库才算取消 | 改订阅可见性时别把 `list_active` 用在页面列表上，否则停用的订阅无法再从页面启用 |
 | `rsshub/infrastructure/media/compressor.py` 与 `dispatcher._send_silent` | 注入的图会留在聊天历史里，按 1 MiB 预算压缩；注入消息带 ≤12 字符的 `message_id`，宿主的回复编排据此把图引用进麦麦的回复 | 改注入路径时保持「图片段与 message_id 在同一条注入消息里」，预算与 ID 长度不要放宽到宿主原样展示阈值之外 |
+| `rsshub/infrastructure/media/downloader.py` 的 `_SEND_BUDGET_BYTES` | 宿主单帧上限 16 MiB，图片走 base64 膨胀约 1/3，所以下载门槛（`image_max_mib`，1–50）之外还有 8 MiB 发送预算：超出的原图先压小再发 | 改发送预算时保证 `_SEND_BUDGET_BYTES * 4 / 3 < 16 MiB`，单元测试 `test_media_budget_constants_fit_host_limits` 会拦住越界 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
 | `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值；重命名字段后旧键仍留在文件里但不生效 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |

@@ -34,6 +34,10 @@ _IMAGE_TIMEOUT = 8.0
 _MEDIA_BUDGET = 12.0
 _MAX_PARALLEL = 3
 
+# 宿主插件通道的单帧上限是 16 MiB，图片按 base64 传输会膨胀约 1/3，
+# 所以原图超过 8 MiB 时先压到这个预算内再发送，否则整条消息发不出去。
+_SEND_BUDGET_BYTES = 8 * 1024 * 1024
+
 _IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/avif")
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".mov", ".m3u8")
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".flac")
@@ -198,6 +202,11 @@ class MediaDownloader:
         payload = result.content
         if budget is not None:
             compressed = compress_image(payload, max_bytes=budget)
+            if compressed is None:
+                return None
+            payload = compressed
+        elif len(payload) > _SEND_BUDGET_BYTES:
+            compressed = compress_image(payload, max_bytes=_SEND_BUDGET_BYTES)
             if compressed is None:
                 return None
             payload = compressed
