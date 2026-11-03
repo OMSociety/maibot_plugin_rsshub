@@ -10,6 +10,7 @@ from ...errors import SubscriptionNotFoundError
 from ...infrastructure.fetcher.client import HttpClient
 from ...infrastructure.fetcher.parser import parse_feed
 from ...infrastructure.fetcher.url_guard import normalize_feed_url_async
+from ...infrastructure.persistence.database import INHERIT_VALUE
 from ...infrastructure.persistence.models import Feed, Subscription, User
 from ...infrastructure.persistence.store import Store
 
@@ -178,6 +179,7 @@ class SubscriptionService:
             "id": sub.id,
             "title": sub.title or (feed.title if feed else ""),
             "link": feed.link if feed else "",
+            "state": sub.state,
             "push_mode": settings.push_mode,
             "notify": settings.notify,
             "interval_seconds": settings.interval_seconds,
@@ -235,6 +237,11 @@ def _coerce(key: str, value: Any) -> Any:
         number = int(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"选项 {key} 需要整数，收到: {value!r}") from exc
-    if key == "interval" and not INTERVAL_MINUTES_MIN <= number <= INTERVAL_MINUTES_MAX:
-        raise ValueError(f"轮询间隔需要在 {INTERVAL_MINUTES_MIN}-{INTERVAL_MINUTES_MAX} 分钟之间，收到: {number}")
+    if key == "interval":
+        if number == 0:
+            return INHERIT_VALUE
+        if not INTERVAL_MINUTES_MIN <= number <= INTERVAL_MINUTES_MAX:
+            raise ValueError(
+                f"轮询间隔需在 {INTERVAL_MINUTES_MIN}-{INTERVAL_MINUTES_MAX} 分钟之间（0 表示继承默认），收到: {number}"
+            )
     return number

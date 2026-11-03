@@ -112,6 +112,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 抓到的新条目一律并入 `entry_hashes`（源级已见集合），推送失败不回滚哈希 | 补发走 `push_history` 的失败记录；改投递逻辑时不要用哈希回滚来表达重试 |
 | `rsshub/application/services/dispatcher.py` | 推送历史按条目各存一份文本，发送前按（订阅, 条目）查成功记录做幂等 | 改推送或重试路径时保持「一次只发一条目文本」，并用 `retry_failed` 走补发 |
+| `rsshub/infrastructure/persistence/repositories.py` 的 `list_active` / `list_all` | 调度器与概览只取 `list_active()`（`state=1`），WebUI 订阅列表与历史会话名取 `list_all()`；停用只改 `state`，删库才算取消 | 改订阅可见性时别把 `list_active` 用在页面列表上，否则停用的订阅无法再从页面启用 |
 | `rsshub/infrastructure/media/compressor.py` 与 `dispatcher._send_silent` | 注入的图会留在聊天历史里，按 1 MiB 预算压缩；注入消息带 ≤12 字符的 `message_id`，宿主的回复编排据此把图引用进麦麦的回复 | 改注入路径时保持「图片段与 message_id 在同一条注入消息里」，预算与 ID 长度不要放宽到宿主原样展示阈值之外 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
 | `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |

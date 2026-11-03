@@ -85,6 +85,10 @@ async def test_list_and_unsub_commands(harness: Harness) -> None:
 
     await harness.handle_list(stream_id="s1")
     assert "示例源" in harness.ctx.send.sent[-1][1]
+    assert "人格化" in harness.ctx.send.sent[-1][1]
+
+    await harness.handle_status(stream_id="s1")
+    assert "默认推送模式 人格化" in harness.ctx.send.sent[-1][1]
 
     await harness.handle_unsub(stream_id="s1", matched_groups={}, user_id="u1")
     assert "已取消 1 个订阅" in harness.ctx.send.sent[-1][1]

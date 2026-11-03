@@ -260,6 +260,10 @@ class SubscriptionRepository:
         rows = self._db.query("SELECT * FROM rsshub_subs WHERE state=1 ORDER BY id")
         return [sub_from_row(row) for row in rows]
 
+    def list_all(self) -> list[Subscription]:
+        rows = self._db.query("SELECT * FROM rsshub_subs ORDER BY id")
+        return [sub_from_row(row) for row in rows]
+
     def update(self, sub_id: int, **fields) -> None:
         if not fields:
             return

@@ -48,7 +48,7 @@ class PluginSection(PluginConfigBase):
         description="是否把 15 个订阅工具提供给麦麦调用",
         json_schema_extra={
             "label": "向麦麦提供订阅工具",
-            "hint": "关闭后麦麦看不到这些工具，只能用 /订阅 等命令；在插件页点「重载」后完全消失",
+            "hint": "关闭后麦麦不再调用订阅工具，只能用 /订阅 等命令操作；切换后需重载插件才从工具列表移除",
         },
     )
     config_version: str = Field(
@@ -134,7 +134,7 @@ class NetworkSection(PluginConfigBase):
         description="允许抓取内网、环回与云元数据地址；这是 SSRF 防护的放行开关",
         json_schema_extra={
             "label": "允许抓内网地址",
-            "hint": "只有自建 RSSHub 跑在内网时才打开；打开后任何人给的链接都可能访问你的内网",
+            "hint": "只有自建 RSSHub 跑在本机或内网时才打开；开启后群友提交的订阅链接也能访问内网地址",
         },
     )
 

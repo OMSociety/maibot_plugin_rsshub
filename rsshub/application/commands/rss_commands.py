@@ -24,6 +24,8 @@ _HELP = """RSSHub 订阅命令（中文与英文等价）
 /帮助 或 /rsshelp                   显示本帮助
 更细的配置（推送模式、处理链、历史）可以直接用自然语言让麦麦调用工具。"""
 
+_MODE_LABELS = {"persona": "人格化", "direct": "直推", "silent": "注入"}
+
 
 class RssCommandsMixin:
     """命令实现；依赖宿主插件实例上的 ctx / store / 服务对象。"""
@@ -41,7 +43,7 @@ class RssCommandsMixin:
         link = str(groups.get("link") or "").strip()
         title = str(groups.get("title") or "").strip()
         if not link:
-            await self._reply(stream_id, "用法：/sub <Feed 地址或 RSSHub 路由> [自定义标题]")
+            await self._reply(stream_id, "用法：/订阅 <Feed 地址或 RSSHub 路由> [自定义标题]")
             return True, "缺少订阅地址", True
         try:
             result = await self.sub_service.subscribe(
@@ -81,14 +83,16 @@ class RssCommandsMixin:
     async def handle_list(self, stream_id: str = "", **kwargs: Any) -> tuple:
         subs = self.sub_service.list_for_session(stream_id)
         if not subs:
-            await self._reply(stream_id, "当前会话还没有订阅，用 /sub <地址> 来添加")
+            await self._reply(stream_id, "当前会话还没有订阅，用 /订阅 <地址> 来添加")
             return True, "无订阅", True
         lines = ["当前会话订阅："]
         for sub in subs:
             info = self.sub_service.describe(sub, self.defaults)
             handlers = "、".join(info["handlers"]) or "无"
+            mode_label = _MODE_LABELS.get(info["push_mode"], info["push_mode"])
+            paused_mark = "［已停用］" if info.get("state") == 0 else ""
             lines.append(
-                f"#{info['id']} {info['title'] or info['link']}（{info['push_mode']}，"
+                f"#{info['id']} {info['title'] or info['link']}{paused_mark}（{mode_label}，"
                 f"{info['interval_seconds'] // 60} 分钟，处理链 {handlers}）"
             )
         await self._reply(stream_id, "\n".join(lines))
@@ -100,10 +104,11 @@ class RssCommandsMixin:
         total = len(self.store.repos.subs.list_active())
         recent = self.store.repos.history.list_by_session(stream_id, 5)
         failed = sum(1 for record in recent if record.status == "failed")
+        default_mode = _MODE_LABELS.get(str(self.config.push.default_mode), str(self.config.push.default_mode))
         lines = [
             f"本会话订阅 {len(subs)} 个，全库启用中 {total} 个",
             f"最近 {len(recent)} 条推送中失败 {failed} 条",
-            f"轮询间隔 {int(self.config.polling.interval_minutes)} 分钟，默认推送模式 {self.config.push.default_mode}",
+            f"轮询间隔 {int(self.config.polling.interval_minutes)} 分钟，默认推送模式 {default_mode}",
         ]
         await self._reply(stream_id, "\n".join(lines))
         return True, "已输出概况", True
@@ -123,12 +128,12 @@ class RssCommandsMixin:
         raw_id = str((matched_groups or {}).get("sub_id") or "").strip()
         subs = self.store.repos.subs.list_by_session(stream_id)
         if not subs:
-            await self._reply(stream_id, "当前会话没有订阅，先 /sub <地址>")
+            await self._reply(stream_id, "当前会话没有订阅，先 /订阅 <地址>")
             return True, "无订阅", True
         if raw_id:
             sub = next((item for item in subs if item.id == int(raw_id)), None)
             if sub is None:
-                await self._reply(stream_id, f"当前会话没有 #{raw_id} 这条订阅，用 /sub_list 看编号")
+                await self._reply(stream_id, f"当前会话没有 #{raw_id} 这条订阅，用 /列表 看编号")
                 return True, "订阅不存在", True
         elif len(subs) == 1:
             sub = subs[0]

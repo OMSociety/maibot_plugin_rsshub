@@ -40,7 +40,7 @@ MAX_XML_BYTES = 256 * 1024
 MAX_XML_NODES = 4096
 
 _OPTION_HELP = (
-    "可选项：interval（轮询间隔，1-1440 分钟）、notify（是否推送）、push_mode（persona/direct/silent）、"
+    "可选项：interval（轮询间隔，1-1440 分钟，0 继承默认）、notify（是否推送）、push_mode（persona/direct/silent）、"
     "length_limit（摘要长度上限，0 不限）、"
     "display_author/display_title/display_entry_tags/display_media（0 自动、1 强制显示、2 强制隐藏；"
     "display_media 的 2 表示不带图）、title（自定义标题）、tags（标签）"

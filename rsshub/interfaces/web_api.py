@@ -35,6 +35,7 @@ class WebApiMixin:
         if self.store is None:
             return {"ready": False, "error": "插件尚未加载"}
         subs = self.store.repos.subs.list_active()
+        directory = self._session_directory()
         since = datetime.now(UTC) - timedelta(days=1)
         recent = self.store.repos.history.list_recent(500)
         today = [record for record in recent if _parse(record.created_at) >= since]
@@ -51,13 +52,14 @@ class WebApiMixin:
             "poll_interval_minutes": int(self.config.polling.interval_minutes),
             "default_push_mode": str(self.config.push.default_mode),
             "handlers": list(HANDLERS),
+            "known_sessions": [{"session": session, "label": label} for session, (label, _) in directory.items()],
         }
 
     @API("webui_list_subscriptions", description="订阅列表分页")
     async def webui_list_subscriptions(self, page: int = 1, page_size: int = 20, keyword: str = "") -> dict[str, Any]:
         if self.store is None:
             return {"items": [], "total": 0, "page": 1, "pages": 0}
-        rows = self.store.repos.subs.list_active()
+        rows = self.store.repos.subs.list_all()
         keyword = keyword.strip().lower()
         if keyword:
             rows = [
@@ -65,8 +67,11 @@ class WebApiMixin:
                 for sub in rows
                 if keyword in (sub.title or "").lower()
                 or keyword in (sub.target_session or "").lower()
+                or keyword in (sub.session_label or "").lower()
                 or keyword
-                in str(self.store.repos.feeds.get(sub.feed_id).link if self.store.repos.feeds.get(sub.feed_id) else "")
+                in str(
+                    self.store.repos.feeds.get(sub.feed_id).link if self.store.repos.feeds.get(sub.feed_id) else ""
+                ).lower()
             ]
         page, page_size = _paginate(page, page_size, len(rows))
         start = (page - 1) * page_size
@@ -96,6 +101,7 @@ class WebApiMixin:
     async def webui_list_history(self, page: int = 1, page_size: int = 20, status: str = "") -> dict[str, Any]:
         if self.store is None:
             return {"items": [], "total": 0, "page": 1, "pages": 0}
+        directory = self._session_directory()
         rows = self.store.repos.history.list_recent(1000)
         status = status.strip().lower()
         if status in _VALID_STATUS:
@@ -109,6 +115,7 @@ class WebApiMixin:
                 "link": record.entry_link,
                 "feed_title": record.feed_title,
                 "session": record.target_session or "",
+                "session_label": directory.get(record.target_session or "", (record.target_session or "", ""))[0],
                 "status": record.status or "",
                 "retry_count": record.retry_count,
                 "fail_reason": record.fail_reason or "",
@@ -157,11 +164,13 @@ class WebApiMixin:
 
     @API("webui_import_subscriptions", description="批量导入订阅")
     async def webui_import_subscriptions(self, links: str = "", session: str = "", title: str = "") -> dict[str, Any]:
-        if self.sub_service is None:
+        if self.sub_service is None or self.store is None:
             raise RuntimeError("插件尚未加载")
         session = session.strip()
         if not session:
             raise ValueError("批量导入需要填目标会话 ID，否则订阅建立后没有推送对象")
+        directory = self._session_directory()
+        known_label, known_platform = directory.get(session, ("", ""))
         imported, duplicated, failed = 0, 0, []
         for raw in [line.strip() for line in links.replace(",", "\n").splitlines()]:
             if not raw:
@@ -172,12 +181,34 @@ class WebApiMixin:
                 failed.append(f"{raw}: {exc}")
                 continue
             if result.created_subscription:
+                if known_label and result.sub.id is not None and result.sub.session_label == session:
+                    self.store.repos.subs.update(
+                        result.sub.id,
+                        session_label=known_label,
+                        platform_name=known_platform,
+                    )
                 imported += 1
             else:
                 duplicated += 1
         return {"imported": imported, "duplicated": duplicated, "failed": failed}
 
     # ── 内部 ────────────────────────────────────────────────────
+
+    def _session_directory(self) -> dict[str, tuple[str, str]]:
+        """从全部订阅提取 target_session -> (可读标签, 平台名)，优先保留非哈希的可读标签。"""
+        if self.store is None:
+            return {}
+        directory: dict[str, tuple[str, str]] = {}
+        for sub in self.store.repos.subs.list_all():
+            session = (sub.target_session or "").strip()
+            if not session:
+                continue
+            label = (sub.session_label or "").strip() or session
+            platform = (sub.platform_name or "").strip()
+            prev = directory.get(session)
+            if prev is None or (prev[0] == session and label != session):
+                directory[session] = (label, platform)
+        return directory
 
     def _web_sub(self, sub_id: int) -> Any:
         if self.store is None:

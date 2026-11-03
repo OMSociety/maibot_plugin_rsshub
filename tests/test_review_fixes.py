@@ -218,9 +218,11 @@ def test_dr07_json_feed_is_parsed() -> None:
 
 def test_dr16_interval_bounds(store: Store) -> None:
     from rsshub.application.services.subscription_service import _coerce
+    from rsshub.infrastructure.persistence.database import INHERIT_VALUE
 
+    assert _coerce("interval", "0") == INHERIT_VALUE, "0 表示回落到上级继承值，与未设置时同义"
     with pytest.raises(ValueError):
-        _coerce("interval", "0")
+        _coerce("interval", "-1")
     with pytest.raises(ValueError):
         _coerce("interval", "1441")
     assert _coerce("interval", "15") == 15

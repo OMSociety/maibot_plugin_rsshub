@@ -9,7 +9,6 @@
   * { box-sizing: border-box; }
   html, body { max-width: 100%; overflow-x: hidden; }
   body { padding: 20px 24px 40px; }
-  .page-note { margin: 0 0 10px; font-size: 13px; line-height: 1.6; }
   .page-title { font-family: var(--maibot-font-display); font-size: 18px; font-weight: 600; margin: 0 0 4px; }
   .subtitle { font-size: 12px; margin-bottom: 16px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 20px; }
@@ -20,8 +19,9 @@
   .toolbar .maibot-input { width: 240px; max-width: 100%; }
   .cards-list { display: grid; gap: 12px; }
   .sub-card { padding: 14px 16px; }
+  .sub-card.is-paused { opacity: 0.68; }
   .sub-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .sub-title { min-width: 0; flex: 1 1 260px; }
+  .sub-title { min-width: 0; flex: 1 1 260px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .sub-actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .sub-actions .maibot-button { padding: 6px 12px; font-size: 12px; }
   .sub-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 13px; }
@@ -60,8 +60,8 @@
   .toast.error { color: var(--maibot-danger); border-color: var(--maibot-danger); }
   .form-grid { display: grid; gap: 10px; max-width: 560px; }
   .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-  .form-row label { min-width: 72px; font-size: 13px; }
-  .form-row .maibot-input { flex: 1; min-width: 180px; }
+  .form-row label { min-width: 112px; font-size: 13px; }
+  .form-row .maibot-input, .form-row .maibot-select { flex: 1; min-width: 180px; }
   textarea.maibot-input { width: 100%; min-height: 140px; font: inherit; font-size: 13px; resize: vertical; }
   .badge-retry { margin-left: 6px; }
   /* 宿主公共类只覆盖关闭态控件，展开列表与悬停态在这里补齐，颜色仍全部走宿主变量。 */
@@ -90,9 +90,6 @@
 </head>
 <body class="maibot-page">
   <h1 class="page-title">RSS 订阅</h1>
-  <p class="maibot-muted page-note">
-    音频与视频按原文件推送需要宿主打开「设置 → 能力 → 文件功能」；关着时照常推送，音视频改为附链接。
-  </p>
   <div class="maibot-muted subtitle" id="subtitle">正在加载…</div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -140,9 +137,15 @@
   <section id="view-import" class="hidden">
     <p class="maibot-muted">每行一个 Feed 地址或 RSSHub 路由；目标会话必填，导入的订阅会推送到该会话。</p>
     <div class="form-grid">
+      <div class="form-row hidden" id="import-session-pick-row">
+        <label class="maibot-muted" for="import-session-pick">已有会话快选</label>
+        <select class="maibot-select" id="import-session-pick">
+          <option value="">从已有订阅会话选择…</option>
+        </select>
+      </div>
       <div class="form-row">
         <label class="maibot-muted" for="import-session">目标会话（必填）</label>
-        <input class="maibot-input" id="import-session" placeholder="例如 qq:group:123456">
+        <input class="maibot-input" id="import-session" placeholder="选上方已有会话，或填宿主会话 stream_id">
       </div>
       <div class="form-row">
         <label class="maibot-muted" for="import-title">统一标题</label>
@@ -156,8 +159,18 @@
   <script type="module">
     await maibot.ready;
 
+    const MODE_LABELS = { persona: '人格化', direct: '直推', silent: '注入' };
+    const STATUS_LABELS = { success: '成功', failed: '失败', stopped: '已停止', skipped: '已过滤' };
     const state = { subs: { page: 1, pages: 1, keyword: '' }, history: { page: 1, pages: 1, status: '' } };
     const $ = (id) => document.getElementById(id);
+
+    function fmtTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return String(iso).replace('T', ' ').slice(0, 19);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
 
     let toastTimer = 0;
     function toast(text, isError = false) {
@@ -199,7 +212,8 @@
 
     function renderOverview(data) {
       if (!data || data.ready === false) { $('subtitle').textContent = '插件未加载，无法读取数据'; return; }
-      $('subtitle').textContent = `全局轮询 ${data.poll_interval_minutes} 分钟 · 默认推送 ${data.default_push_mode}`;
+      const modeLabel = MODE_LABELS[data.default_push_mode] || data.default_push_mode;
+      $('subtitle').textContent = `全局轮询 ${data.poll_interval_minutes} 分钟 · 默认推送：${modeLabel}`;
       const cards = [
         ['订阅', data.subscriptions], ['来源', data.feeds], ['会话', data.sessions],
         ['24 小时推送', data.pushes_24h], ['24 小时失败', data.failures_24h], ['待重试', data.pending_retry],
@@ -209,6 +223,22 @@
           el('div', { class: 'maibot-muted stat-label', text: label }),
           el('div', { class: 'maibot-number stat-value', text: String(value) }),
         ])));
+      const known = Array.isArray(data.known_sessions) ? data.known_sessions : [];
+      const pickRow = $('import-session-pick-row');
+      const pick = $('import-session-pick');
+      pickRow.classList.toggle('hidden', !known.length);
+      if (known.length) {
+        const current = $('import-session').value.trim();
+        pick.replaceChildren(
+          el('option', { value: '', text: '从已有订阅会话选择…' }),
+          ...known.map(({ session, label }) => {
+            const short = session.length > 10 ? `${session.slice(0, 8)}…` : session;
+            const text = label && label !== session ? `${label}（${short}）` : session;
+            return el('option', { value: session, text });
+          }),
+        );
+        if (current && known.some((s) => s.session === current)) pick.value = current;
+      }
     }
 
     async function loadOverview() {
@@ -220,15 +250,20 @@
         const data = await maibot.query('subscriptions', { page, page_size: 20, keyword: state.subs.keyword });
         state.subs.page = data.page; state.subs.pages = data.pages;
         $('subs-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
+        $('subs-prev').disabled = data.page <= 1;
+        $('subs-next').disabled = data.page >= data.pages;
         const body = $('subs-body');
         if (!data.items.length) {
           body.replaceChildren(emptyBlock(state.subs.keyword ? '没有匹配的订阅' : '还没有订阅', state.subs.keyword ? '换个关键词试试' : '用 /订阅 <地址> 添加，或到「批量导入」里一次加多个'));
           return;
         }
         body.replaceChildren(...data.items.map((item) => {
-          const card = el('article', { class: 'sub-card maibot-card' });
+          const paused = !item.state;
+          const card = el('article', { class: `sub-card maibot-card${paused ? ' is-paused' : ''}` });
           const head = el('div', { class: 'sub-head' });
-          const title = el('div', { class: 'sub-title' }, [link(item.link, item.title || item.link || `#${item.id}`)]);
+          const titleChildren = [link(item.link, item.title || item.link || `#${item.id}`)];
+          if (paused) titleChildren.push(el('span', { class: 'maibot-badge', text: '已停用' }));
+          const title = el('div', { class: 'sub-title' }, titleChildren);
           const actions = el('div', { class: 'sub-actions' }, [
             button('立即抓取', () => pollNow(item.id)),
             button(item.state ? '停用' : '启用', () => setState(item.id, !item.state)),
@@ -251,7 +286,7 @@
           ]);
           const next = el('div', { class: 'meta-item' }, [
             el('span', { class: 'maibot-muted', text: '下次抓取' }),
-            el('span', { class: 'maibot-muted', text: item.next_check_at ? item.next_check_at.replace('T', ' ').slice(0, 19) : '—' }),
+            el('span', { class: 'maibot-muted', text: paused ? '已停用' : fmtTime(item.next_check_at) }),
           ]);
           meta.append(session, mode, interval, next);
           card.append(head, meta);
@@ -285,7 +320,10 @@
       input.placeholder = '继承';
       const commit = () => {
         const raw = input.value.trim();
-        if (!raw) return;
+        if (!raw) {
+          if (item.interval_minutes > 0) updateSub(item.id, 'interval', '0');
+          return;
+        }
         const minutes = Number(raw);
         if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { toast('间隔需为 1–1440 的整数', true); return; }
         updateSub(item.id, 'interval', String(minutes));
@@ -327,6 +365,8 @@
         const data = await maibot.query('history', { page, page_size: 20, status: state.history.status });
         state.history.page = data.page; state.history.pages = data.pages;
         $('history-page').textContent = `${data.page} / ${data.pages}（共 ${data.total} 条）`;
+        $('history-prev').disabled = data.page <= 1;
+        $('history-next').disabled = data.page >= data.pages;
         const body = $('history-body');
         if (!data.items.length) {
           body.replaceChildren(emptyBlock('还没有推送记录', '有订阅并抓到新条目后，这里会列出每一次推送与失败原因'));
@@ -335,8 +375,8 @@
         body.replaceChildren(...data.items.map((item) => {
           const card = el('article', { class: 'history-card maibot-card' });
           const head = el('div', { class: 'history-head' }, [
-            el('span', { class: 'maibot-muted', text: (item.created_at || '').replace('T', ' ').slice(0, 19) }),
-            el('span', { class: 'maibot-badge', text: item.status || '—' }),
+            el('span', { class: 'maibot-muted', text: fmtTime(item.created_at) }),
+            el('span', { class: 'maibot-badge', text: STATUS_LABELS[item.status] || item.status || '—' }),
           ]);
           const title = el('div', {}, [link(item.link, item.title || item.link || `#${item.id}`)]);
           if (item.fail_reason) title.append(el('div', { class: 'maibot-muted', text: item.fail_reason }));
@@ -363,8 +403,25 @@
       if (view === 'history') loadHistory(1);
     }
 
+    let keywordTimer = 0;
+    const applyKeyword = () => {
+      clearTimeout(keywordTimer);
+      const next = $('keyword').value.trim();
+      if (next === state.subs.keyword) return;
+      state.subs.keyword = next;
+      loadSubs(1);
+    };
+
     document.querySelectorAll('.tabs .maibot-button').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
-    $('keyword').addEventListener('change', () => { state.subs.keyword = $('keyword').value.trim(); loadSubs(1); });
+    $('keyword').addEventListener('input', () => {
+      clearTimeout(keywordTimer);
+      keywordTimer = setTimeout(applyKeyword, 250);
+    });
+    $('keyword').addEventListener('change', applyKeyword);
+    $('import-session-pick').addEventListener('change', () => {
+      const val = $('import-session-pick').value;
+      if (val) $('import-session').value = val;
+    });
     $('reload-subs').addEventListener('click', () => { loadOverview(); loadSubs(); });
     $('history-status').addEventListener('change', () => { state.history.status = $('history-status').value; loadHistory(1); });
     $('reload-history').addEventListener('click', () => loadHistory(1));
