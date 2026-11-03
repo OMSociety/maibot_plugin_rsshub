@@ -52,7 +52,7 @@ class PluginSection(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="1.4.0",
+        default="1.5.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
@@ -225,6 +225,16 @@ class MediaSection(PluginConfigBase):
         json_schema_extra={
             "label": "单张图片上限（MiB）",
             "hint": "超过的图直接跳过；原图超过 8 MiB 时会先压小再发送，避免超出宿主单条消息上限",
+        },
+    )
+    image_timeout_seconds: int = Field(
+        default=20,
+        ge=5,
+        le=120,
+        description="单张图片允许下载的时间上限，单位秒",
+        json_schema_extra={
+            "label": "单张图下载超时（秒）",
+            "hint": "图很大的源（如 pixiv 原图单张 10 MB 以上）可调高；调低会让慢图更容易被跳过",
         },
     )
     table_render_enabled: bool = Field(

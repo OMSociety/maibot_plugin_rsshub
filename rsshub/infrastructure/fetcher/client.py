@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from ...errors import FeedFetchError
+from ...errors import FeedFetchError, FeedTimeoutError
 from .url_guard import guard_fetch_target
 
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -96,7 +96,7 @@ class HttpClient:
                     timeout=request_timeout,
                 )
             except httpx.TimeoutException as exc:
-                raise FeedFetchError(f"请求超时: {current}") from exc
+                raise FeedTimeoutError(f"请求超时: {current}") from exc
             except httpx.HTTPError as exc:
                 raise FeedFetchError(f"网络错误: {exc}") from exc
 

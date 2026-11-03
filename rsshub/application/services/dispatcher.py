@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from ...domain.entry import Entry
@@ -34,6 +35,31 @@ _CONTEXT_MESSAGE_ID_DIGITS = 8
 _CONTEXT_MESSAGE_ID_PREFIX = "rss"
 
 
+@dataclass
+class PushReport:
+    """一次推送的结果：是否送达、带了几张图、图为什么没带成。"""
+
+    delivered: bool = False
+    images: int = 0
+    skipped: int = 0
+    skip_reasons: dict[str, int] = field(default_factory=dict)
+
+    def describe_media(self) -> str:
+        """一句话说明附图情况，供命令回复与注入提示引用。"""
+        if self.images and not self.skipped:
+            return f"已附带 {self.images} 张图"
+        if self.images:
+            return f"已附带 {self.images} 张图，另有 {_describe_skips(self.skipped, self.skip_reasons)}"
+        if self.skipped:
+            return f"附图没取到：{_describe_skips(self.skipped, self.skip_reasons)}"
+        return ""
+
+
+def _describe_skips(count: int, reasons: dict[str, int]) -> str:
+    detail = "、".join(f"{reason} {number}" for reason, number in reasons.items())
+    return f"{count} 张（{detail}）" if detail else f"{count} 张"
+
+
 class Dispatcher:
     """把一批新条目送达目标聊天流，并记录推送历史。"""
 
@@ -47,6 +73,7 @@ class Dispatcher:
                 client,
                 max_images=int(media_cfg.max_images),
                 max_bytes=int(media_cfg.image_max_mib) * 1024 * 1024,
+                timeout_seconds=float(getattr(media_cfg, "image_timeout_seconds", 20) or 20),
             )
             if client is not None and media_cfg is not None
             else None
@@ -73,12 +100,42 @@ class Dispatcher:
         with_media: bool = True,
         extra_links: list[str] | None = None,
     ) -> bool:
+        report = await self.push_report(
+            sub=sub,
+            feed=feed,
+            entries=entries,
+            settings=settings,
+            stream_id=stream_id,
+            record=record,
+            source_type=source_type,
+            source_key=source_key,
+            mode_override=mode_override,
+            with_media=with_media,
+            extra_links=extra_links,
+        )
+        return report.delivered
+
+    async def push_report(
+        self,
+        *,
+        sub: Subscription,
+        feed: Feed | None,
+        entries: list[Entry],
+        settings: EffectiveSettings,
+        stream_id: str,
+        record: bool = True,
+        source_type: str = "feed",
+        source_key: str | None = None,
+        mode_override: str | None = None,
+        with_media: bool = True,
+        extra_links: list[str] | None = None,
+    ) -> PushReport:
         if not entries:
-            return True
+            return PushReport(delivered=True)
         entries = [entry for entry in entries if not self._already_delivered(sub, entry)]
         if not entries:
             self._ctx.logger.info("RSS 推送跳过：这批条目在该会话已有成功记录 sub=%s", sub.id)
-            return True
+            return PushReport(delivered=True)
         feed_title = (feed.title if feed else "") or sub.title
         mode = mode_override or (settings.push_mode if settings.push_mode in PUSH_MODES else "direct")
         direct_text = build_direct_text(feed_title, entries, settings)
@@ -91,12 +148,20 @@ class Dispatcher:
         else:
             bundle = await self._collect_media(entries, settings)
         media_elapsed = time.monotonic() - started
+        report = PushReport(
+            images=len(bundle.images),
+            skipped=bundle.skipped,
+            skip_reasons=dict(bundle.skip_reasons),
+        )
         links = list(bundle.audio_video_links) + list(extra_links or [])
         if links:
             direct_text = f"{direct_text}\n{av_link_card_text(links)}"
         message_id = _context_message_id(entries)
         if mode == "silent" and bundle.images:
             direct_text = f"{direct_text}\n{_context_share_hint(message_id, len(bundle.images))}"
+        if mode == "silent" and bundle.skipped:
+            # 注入内容会被麦麦直接复述给群友：把「图没取到」写清楚，它才不会猜成别的原因
+            direct_text = f"{direct_text}\n{_context_missing_hint(report)}"
 
         send_started = time.monotonic()
         if mode == "silent":
@@ -106,6 +171,7 @@ class Dispatcher:
         else:
             delivered = await self._send_rich(stream_id, direct_text, bundle.images)
         send_elapsed = time.monotonic() - send_started
+        report.delivered = delivered
 
         # 媒体与发送分两段计时：慢图与超时是这条链上最难从外部看到的耗时来源。
         self._ctx.logger.info(
@@ -118,6 +184,8 @@ class Dispatcher:
             send_elapsed,
             delivered,
         )
+        if bundle.skipped:
+            self._ctx.logger.info("RSS 附图跳过 %s", _describe_skips(bundle.skipped, bundle.skip_reasons))
 
         if record:
             for entry in entries:
@@ -132,7 +200,7 @@ class Dispatcher:
                     source_type=source_type,
                     source_key=source_key or self._default_source_key(feed, sub),
                 )
-        return delivered
+        return report
 
     def _already_delivered(self, sub: Subscription, entry: Entry) -> bool:
         if sub.id is None or not sub.target_session:
@@ -338,6 +406,11 @@ def _context_share_hint(message_id: str, image_count: int) -> str:
     """告诉麦麦这张图挂在哪条消息上：宿主的 reply 工具按 msg_id + index 取图。"""
     indices = "index=0" if image_count == 1 else f"index=0..{image_count - 1}"
     return f'需要分享时可以把图一起带上：msg_id="{message_id}"，{indices}。'
+
+
+def _context_missing_hint(report: PushReport) -> str:
+    """图没取到时同样给出结论：麦麦照这句回答，不会再说成「没挂抓图功能」。"""
+    return f"（本轮{report.describe_media()}）"
 
 
 def _context_image_segments(images: list[str], entries: list[Entry]) -> list[dict[str, Any]]:

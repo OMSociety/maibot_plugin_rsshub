@@ -24,19 +24,28 @@ from uuid import uuid4
 from bs4 import BeautifulSoup
 
 from ...domain.entry import Enclosure, Entry
-from ...errors import FeedFetchError
+from ...errors import FeedFetchError, FeedTimeoutError
 from ..fetcher.client import HttpClient
 from .compressor import compress_image
 
-# 单张图与整批图的下载上限：图片站（如 pixiv 原图）经常单张就上百 KB 到数 MB，
+# 单张图与整批图的下载上限：图片站（如 pixiv 原图）单张常达数 MB 到十几 MB，
 # 串行下载会把命令调用拖过宿主的 60 秒 RPC 超时。超时即跳过该图，推送继续。
-_IMAGE_TIMEOUT = 8.0
-_MEDIA_BUDGET = 12.0
+# 20 秒按 0.6 MB/s 的慢速链路也能下完 10 MB 左右的原图；整批给 1.5 倍余量。
+_IMAGE_TIMEOUT = 20.0
+_BATCH_TO_IMAGE_RATIO = 1.5
 _MAX_PARALLEL = 3
 
 # 宿主插件通道的单帧上限是 16 MiB，图片按 base64 传输会膨胀约 1/3，
 # 所以原图超过 8 MiB 时先压到这个预算内再发送，否则整条消息发不出去。
 _SEND_BUDGET_BYTES = 8 * 1024 * 1024
+
+# 跳过原因：日志、注入提示与 /测试推送 的回复都按这几个词汇报，模型据此回答用户。
+SKIP_TIMEOUT = "下载超时"
+SKIP_NOT_IMAGE = "返回的不是图片"
+SKIP_TOO_LARGE = "超过单张大小上限"
+SKIP_HTTP = "站点没有正常返回"
+SKIP_COMPRESS = "压不进大小预算"
+SKIP_LIMIT = "超出张数上限"
 
 _IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/avif")
 _VIDEO_SUFFIXES = (".mp4", ".webm", ".mov", ".m3u8")
@@ -60,6 +69,18 @@ class MediaBundle:
     images: list[str] = field(default_factory=list)  # base64 编码
     audio_video_links: list[str] = field(default_factory=list)
     skipped: int = 0
+    skip_reasons: dict[str, int] = field(default_factory=dict)
+
+    def note_skip(self, reason: str) -> None:
+        self.skipped += 1
+        self.skip_reasons[reason] = self.skip_reasons.get(reason, 0) + 1
+
+    def describe_skips(self) -> str:
+        """把跳过原因拼成一句人话，例如「3 张（下载超时 3）」。"""
+        if not self.skipped:
+            return ""
+        detail = "、".join(f"{reason} {count}" for reason, count in self.skip_reasons.items())
+        return f"{self.skipped} 张（{detail}）" if detail else f"{self.skipped} 张"
 
 
 def _is_image(enclosure: Enclosure) -> bool:
@@ -134,10 +155,20 @@ def collect_media_candidates(entry: Entry) -> tuple[list[str], list[str]]:
 class MediaDownloader:
     """下载正文图片并按上限裁剪；失败图片跳过而不中断推送。"""
 
-    def __init__(self, client: HttpClient, *, max_images: int, max_bytes: int) -> None:
+    def __init__(
+        self,
+        client: HttpClient,
+        *,
+        max_images: int,
+        max_bytes: int,
+        timeout_seconds: float | None = None,
+    ) -> None:
         self._client = client
         self._max_images = max(0, max_images)
         self._max_bytes = max(0, max_bytes)
+        # 单图超时来自配置（media.image_timeout_seconds）：图大的源自己调，整批按比例放宽。
+        self._timeout = float(timeout_seconds) if timeout_seconds else _IMAGE_TIMEOUT
+        self._budget = self._timeout * _BATCH_TO_IMAGE_RATIO
 
     async def collect(self, entries: list[Entry], *, image_budget_bytes: int | None = None) -> MediaBundle:
         """收集一批条目的图与音视频链接。
@@ -157,60 +188,63 @@ class MediaDownloader:
             # max_images=0 表示不带图：音视频链接行照旧给出，图片一张不取。
             return bundle
         payloads = await self._download_batch(candidates[: self._max_images * 2], image_budget_bytes)
-        for payload in payloads:
+        for payload, reason in payloads:
             if payload is None:
-                bundle.skipped += 1
+                bundle.note_skip(reason or SKIP_HTTP)
             elif len(bundle.images) < self._max_images:
                 bundle.images.append(payload)
             else:
                 # 下载成功但因张数上限被丢掉的图，同样计入 skipped，避免日志口径失真
-                bundle.skipped += 1
+                bundle.note_skip(SKIP_LIMIT)
         return bundle
 
-    async def _download_batch(self, urls: list[str], budget: int | None = None) -> list[str | None]:
-        """并发下载，超过整批预算就取消剩余任务；返回与 urls 等长的结果列表。"""
+    async def _download_batch(self, urls: list[str], budget: int | None = None) -> list[tuple[str | None, str]]:
+        """并发下载，超过整批预算就取消剩余任务；返回与 urls 等长的 (载荷, 跳过原因)。"""
         if not urls:
             return []
         gate = asyncio.Semaphore(_MAX_PARALLEL)
 
-        async def one(url: str) -> str | None:
+        async def one(url: str) -> tuple[str | None, str]:
             async with gate:
                 return await self._fetch_image(url, budget)
 
         tasks = {asyncio.create_task(one(url)): index for index, url in enumerate(urls)}
-        done, pending = await asyncio.wait(tasks, timeout=_MEDIA_BUDGET)
+        done, pending = await asyncio.wait(tasks, timeout=self._budget)
         for task in pending:
             task.cancel()
-        results: list[str | None] = [None] * len(urls)
+        # 整批预算用尽时被取消的任务统一记作下载超时
+        results: list[tuple[str | None, str]] = [(None, SKIP_TIMEOUT)] * len(urls)
         for task in done:
             if task.cancelled() or task.exception() is not None:
                 continue
             results[tasks[task]] = task.result()
         return results
 
-    async def _fetch_image(self, url: str, budget: int | None = None) -> str | None:
+    async def _fetch_image(self, url: str, budget: int | None = None) -> tuple[str | None, str]:
         try:
-            result = await asyncio.wait_for(self._client.fetch(url, timeout=_IMAGE_TIMEOUT), _IMAGE_TIMEOUT + 1)
-        except (FeedFetchError, TimeoutError):
-            return None
+            result = await asyncio.wait_for(self._client.fetch(url, timeout=self._timeout), self._timeout + 1)
+        except (FeedTimeoutError, TimeoutError):
+            return None, SKIP_TIMEOUT
+        except FeedFetchError:
+            return None, SKIP_HTTP
         if result.status != 200 or not result.content:
-            return None
+            return None, SKIP_HTTP
         if len(result.content) > self._max_bytes:
-            return None
+            return None, SKIP_TOO_LARGE
         if not self._looks_like_image(result.content, result.headers):
-            return None
+            return None, SKIP_NOT_IMAGE
         payload = result.content
         if budget is not None:
             compressed = compress_image(payload, max_bytes=budget)
             if compressed is None:
-                return None
+                return None, SKIP_COMPRESS
             payload = compressed
         elif len(payload) > _SEND_BUDGET_BYTES:
             compressed = compress_image(payload, max_bytes=_SEND_BUDGET_BYTES)
             if compressed is None:
-                return None
+                return None, SKIP_COMPRESS
             payload = compressed
-        return base64.b64encode(payload).decode("ascii")
+        return base64.b64encode(payload).decode("ascii"), ""
 
     @staticmethod
     def _looks_like_image(payload: bytes, headers: dict[str, str]) -> bool:

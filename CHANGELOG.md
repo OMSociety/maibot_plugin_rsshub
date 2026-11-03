@@ -10,6 +10,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 新增
+
+- 配置项 `media.image_timeout_seconds`（5–120 秒，默认 20）：单张图片的下载超时改为可调，整批按 1.5 倍放宽；图片站的原图常有 10 MB 以上，原先固定的 8 秒在慢速链路上会把图全部跳过
+
+### 修复
+
+- 附图被跳过时写明原因（下载超时 / 遇到的上限 / 站点没正常返回），日志、`/测试推送` 的回复与注入模式的提示都带上这句，麦麦不再把「没有图」解释成插件没实现取图
+- `media.image_max_mib` 的上限从 20 放宽到 50；原图超过 8 MiB 时先压到 8 MiB 以内再发送，留在宿主单条消息上限之内
+
+### Added
+
+- New `media.image_timeout_seconds` setting (5–120 s, default 20): the per-image download timeout is now configurable, with the batch budget set to 1.5× it. Originals on image sites often exceed 10 MB, so the former fixed 8 s skipped every image on a slow link
+
+### Fixed
+
+- Skipped attachments now carry a reason (download timed out / over a limit / site did not answer), surfaced in logs, in the `/测试推送` reply and in the injection notice, so the bot no longer explains a missing image as "the plugin cannot fetch images"
+- `media.image_max_mib` now accepts up to 50 (was 20); originals above 8 MiB are compressed below 8 MiB before sending, staying within the host's per-message limit
+
 ## [0.8.0] - 2026-11-03
 
 ### 新增

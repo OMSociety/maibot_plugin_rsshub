@@ -7,7 +7,7 @@ import pytest
 from rsshub.application.commands.rss_commands import RssCommandsMixin
 from rsshub.application.services.subscription_service import SubscriptionService
 from rsshub.infrastructure.persistence.store import Store
-from tests.support import FakeClient, StubCtx, make_config
+from tests.support import FakeClient, StubCtx, make_config, make_media
 
 RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -119,6 +119,33 @@ async def test_test_push_sends_latest_entries_without_history(harness: Harness) 
     pushed = harness.ctx.send.sent[before:]
     assert any("第一篇" in text for _, text in pushed), pushed
     assert harness.store.repos.history.list_by_session("s1") == []
+
+
+@pytest.mark.asyncio
+async def test_test_push_reply_reports_media_outcome(harness: Harness) -> None:
+    """图没取到时命令回复要说清原因，操作者才不会以为是插件没实现取图。"""
+    from rsshub.application.services.dispatcher import Dispatcher
+
+    image_url = "https://example.com/1.png"
+    harness._client.content = RSS_XML.replace(
+        "<guid>p1</guid>",
+        '<guid>p1</guid><description>&lt;img src="https://example.com/1.png"&gt;</description>',
+    ).encode("utf-8")
+    harness._client.delays[image_url] = 5.0
+    harness._dispatcher = Dispatcher(
+        harness.ctx,
+        harness.store,
+        make_config(media=make_media(image_timeout_seconds=0.2)),
+        harness._client,
+    )
+    await harness.handle_sub(stream_id="s1", matched_groups={"link": "https://example.com/feed.xml"}, user_id="u1")
+    sub = harness.store.repos.subs.list_by_session("s1")[0]
+    harness.sub_service.set_subscription_option("u1", sub.id, "push_mode", "direct")
+
+    await harness.handle_test_push(stream_id="s1", is_local_operator=True)
+
+    reply = harness.ctx.send.sent[-1][1]
+    assert "附图没取到" in reply and "下载超时" in reply, reply
 
 
 def test_test_push_declares_operator_permission() -> None:

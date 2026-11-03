@@ -17,7 +17,7 @@ from rsshub.infrastructure.media.compressor import CONTEXT_IMAGE_BYTES, compress
 from rsshub.infrastructure.media.downloader import MediaDownloader
 from rsshub.infrastructure.persistence.models import Feed, Subscription
 from rsshub.infrastructure.persistence.store import Store
-from tests.support import FakeClient, StubCtx, make_config
+from tests.support import FakeClient, StubCtx, make_config, make_media
 
 IMAGE_URL = "https://example.com/pixiv/109808763.jpg"
 
@@ -160,4 +160,27 @@ async def test_silent_push_without_images_has_no_hint(store: Store, tmp_path: ob
 
     call = ctx.mai_append_calls[0]
     assert [segment["type"] for segment in call["segments"]] == ["text"]
+    assert "需要分享" not in call["segments"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_silent_push_reports_images_that_could_not_be_fetched(store: Store, tmp_path: object) -> None:
+    """图没下完时，注入文本要写清原因：否则麦麦会把「没有图」编成「没挂抓图功能」。"""
+    ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
+    store.repos.users.get_or_create("u1")
+    feed = store.repos.feeds.save(Feed(link="https://example.com/feed.xml", title="示例源"))
+    sub = store.repos.subs.save(Subscription(user_id="u1", feed_id=feed.id, target_session="s1"))
+    client = FakeClient(delays={IMAGE_URL: 5.0}, payloads={IMAGE_URL: _noisy_jpeg()})
+    dispatcher = Dispatcher(ctx, store, make_config(media=make_media(image_timeout_seconds=0.2)), client)
+
+    report = await dispatcher.push_report(
+        sub=sub, feed=feed, entries=[_entry_with_image()], settings=_settings(), stream_id="s1"
+    )
+
+    assert report.images == 0
+    assert report.skipped == 1
+    assert report.describe_media() == "附图没取到：1 张（下载超时 1）"
+    call = ctx.mai_append_calls[0]
+    assert [segment["type"] for segment in call["segments"]] == ["text"]
+    assert "附图没取到" in call["segments"][0]["content"]
     assert "需要分享" not in call["segments"][0]["content"]

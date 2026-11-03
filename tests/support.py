@@ -171,6 +171,23 @@ class FakeClient:
         return None
 
 
+def make_media(**overrides: object) -> SimpleNamespace:
+    """媒体分区配置：默认值与 plugin.py 的 MediaSection 对齐。"""
+    media = SimpleNamespace(
+        max_images=3,
+        image_max_mib=1,
+        image_timeout_seconds=20,
+        table_render_enabled=True,
+        multi_image_forward=True,
+        attach_files=True,
+        max_files=2,
+        file_max_mib=20,
+    )
+    for key, value in overrides.items():
+        setattr(media, key, value)
+    return media
+
+
 def make_config(**overrides: object) -> SimpleNamespace:
     """构造与服务层字段对齐的配置快照。"""
     config = SimpleNamespace(
@@ -190,15 +207,7 @@ def make_config(**overrides: object) -> SimpleNamespace:
             max_reference_chars=2000,
         ),
         persona=SimpleNamespace(format_instruction="随口分享"),
-        media=SimpleNamespace(
-            max_images=3,
-            image_max_mib=1,
-            table_render_enabled=True,
-            multi_image_forward=True,
-            attach_files=True,
-            max_files=2,
-            file_max_mib=20,
-        ),
+        media=make_media(),
         rsshub=SimpleNamespace(base_url="https://rsshub.app"),
     )
     for key, value in overrides.items():

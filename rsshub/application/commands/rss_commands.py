@@ -169,7 +169,7 @@ class RssCommandsMixin:
             await self._reply(stream_id, "抓到了条目，但都被处理链拦下了（检查 ai_filter）")
             return True, "全部被过滤", True
 
-        delivered = await self._dispatcher.push(
+        report = await self._dispatcher.push_report(
             sub=sub,
             feed=feed,
             entries=list(reversed(kept)),
@@ -177,14 +177,19 @@ class RssCommandsMixin:
             stream_id=stream_id,
             record=False,
         )
-        if not delivered:
+        if not report.delivered:
             await self._reply(stream_id, "推送失败，看宿主日志里的 rsshub 记录")
             return True, "推送失败", True
         skipped = len(entries) - len(kept)
-        note = f"（{len(kept)} 条，处理链拦下 {skipped} 条）" if skipped else ""
+        notes = [f"{len(kept)} 条"]
+        if skipped:
+            notes.append(f"处理链拦下 {skipped} 条")
+        media = report.describe_media()
+        if media:
+            notes.append(media)
         await self._reply(
             stream_id,
-            f"测试推送完成：{sub.title or feed.link}{note}。本次不写推送历史，也不影响定时轮询",
+            f"测试推送完成：{sub.title or feed.link}（{'，'.join(notes)}）。本次不写推送历史，也不影响定时轮询",
         )
         return True, "测试推送完成", True
 

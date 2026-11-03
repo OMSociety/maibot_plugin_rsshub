@@ -6,7 +6,7 @@
 enabled = true
 # 是否把 15 个订阅工具提供给麦麦；关闭后只能用 /订阅 等命令与 WebUI
 tools_enabled = true
-config_version = "1.4.0"
+config_version = "1.5.0"
 
 [polling]
 interval_minutes = 10        # 全局轮询间隔（分钟），单源可在订阅配置中覆盖（1-1440）
@@ -34,6 +34,8 @@ max_images = 3
 # 下载门槛，1-50；超过的图跳过。注入模式会在该门槛内再把图压到 1 MiB，
 # 直接发送的推送则把超过 8 MiB 的原图压到 8 MiB 以内（宿主单条消息上限 16 MiB）
 image_max_mib = 8
+# 单张图下载超时，5-120 秒；整批按 1.5 倍放宽。图很大的源（pixiv 原图单张 10 MB 以上）调高
+image_timeout_seconds = 20
 table_render_enabled = true
 multi_image_forward = true
 # 工具推送时把音频/视频按原文件发送；后台定时推送没有文件凭证，始终附链接

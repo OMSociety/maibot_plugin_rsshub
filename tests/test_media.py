@@ -11,6 +11,8 @@ from rsshub.application.services.dispatcher import Dispatcher
 from rsshub.domain.entry import Entry
 from rsshub.domain.settings import EffectiveSettings
 from rsshub.infrastructure.media.downloader import (
+    SKIP_TIMEOUT,
+    SKIP_TOO_LARGE,
     FileAttachments,
     MediaDownloader,
     av_link_card_text,
@@ -77,20 +79,17 @@ async def test_downloader_respects_limits_and_skips_oversized() -> None:
     assert len(bundle.images) == 1
     assert base64.b64decode(bundle.images[0]) == PNG
     assert bundle.skipped == 1
+    assert bundle.skip_reasons == {SKIP_TOO_LARGE: 1}
 
 
 @pytest.mark.asyncio
-async def test_slow_image_is_skipped_within_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_slow_image_is_skipped_within_budget() -> None:
     """慢图不能把整次推送拖过宿主的 RPC 上限：超时即跳过，其余图照常发出。"""
-    from rsshub.infrastructure.media import downloader as module
-
-    monkeypatch.setattr(module, "_IMAGE_TIMEOUT", 0.2)
-    monkeypatch.setattr(module, "_MEDIA_BUDGET", 0.4)
     client = FakeClient(
         payloads={"https://example.com/fast.png": PNG},
         delays={"https://example.com/slow.jpg": 5.0},
     )
-    downloader = MediaDownloader(client, max_images=3, max_bytes=1024)
+    downloader = MediaDownloader(client, max_images=3, max_bytes=1024, timeout_seconds=0.2)
 
     started = time.monotonic()
     bundle = await downloader.collect(
@@ -100,17 +99,18 @@ async def test_slow_image_is_skipped_within_budget(monkeypatch: pytest.MonkeyPat
 
     assert len(bundle.images) == 1
     assert bundle.skipped == 1
+    assert bundle.skip_reasons == {SKIP_TIMEOUT: 1}, "超时要能被单独记下来，日志和回复才说得清原因"
     assert elapsed < 1.5
     assert all(call["timeout"] is not None for call in client.calls)
 
 
 def test_media_budget_constants_fit_host_limits() -> None:
-    """预算常量本身也要受assert：把它们改成不设限的值会立刻失败。"""
+    """预算常量本身也要受 assert：把它们改成不设限的值会立刻失败。"""
     from rsshub.infrastructure.media import downloader as module
 
-    assert 0 < module._IMAGE_TIMEOUT < module._MEDIA_BUDGET
-    assert module._MEDIA_BUDGET <= module._IMAGE_TIMEOUT * 2, "整批预算不该远超单图预算"
-    assert module._MEDIA_BUDGET < 60, "整批预算必须留在宿主 60 秒 RPC 上限以内"
+    assert 5 <= module._IMAGE_TIMEOUT <= 30, "默认单图超时要落在一张 10 MB 原图能下完的量级"
+    assert 1 < module._BATCH_TO_IMAGE_RATIO <= 2, "整批只比单图略宽"
+    assert module._IMAGE_TIMEOUT * module._BATCH_TO_IMAGE_RATIO < 60, "整批预算必须留在宿主 60 秒 RPC 上限以内"
     assert 1 <= module._MAX_PARALLEL <= 5
     assert module._SEND_BUDGET_BYTES * 4 // 3 < 16 * 1024 * 1024, "base64 膨胀后必须仍小于宿主 16 MiB 单帧上限"
 
