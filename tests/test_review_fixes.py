@@ -247,6 +247,39 @@ async def test_dr08_redirect_to_private_address_is_blocked() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dr08_redirect_hop_is_checked_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """302 指向内网时必须在跳转后重新拦截，而不是只查起始地址。"""
+    from rsshub import errors
+    from rsshub.infrastructure.fetcher import client as client_module
+
+    async def _fake_guard(url: str, *, allow_private: bool) -> str:
+        if "169.254" in url or "127.0.0.1" in url:
+            raise errors.InvalidFeedUrlError(f"不允许的地址: {url}")
+        return url
+
+    class _StubResponse:
+        status_code = 302
+        content = b""
+        headers: ClassVar[dict] = {"location": "http://169.254.169.254/latest/meta-data/"}
+        url = "https://example.com/feed.xml"
+
+    class _StubClient:
+        async def get(self, url: str, **kwargs: object) -> _StubResponse:
+            return _StubResponse()
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(client_module, "guard_fetch_target", _fake_guard)
+    client = client_module.HttpClient(timeout=1.0, user_agent="t", allow_private=False)
+    client._client = _StubClient()  # type: ignore[assignment]
+
+    with pytest.raises(errors.InvalidFeedUrlError):
+        await client.fetch("https://example.com/feed.xml")
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_dr04_fetch_uses_configured_timeout() -> None:
     from rsshub.infrastructure.fetcher.client import HttpClient
 
