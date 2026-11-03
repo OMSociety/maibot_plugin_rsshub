@@ -13,7 +13,7 @@ interval_minutes = 10        # 全局轮询间隔（分钟），单源可在订�
 concurrency = 5              # 同时抓取的订阅源数量上限
 request_timeout = 30.0       # 单源 HTTP 超时（秒）；DNS 解析在独立线程里做，不阻塞聊天
 max_entries_per_poll = 5     # 单轮每源最多推送的新条目数
-user_agent = "maibot-plugin-rsshub/0.6 (+https://github.com/OMSociety/maibot_plugin_rsshub)"
+user_agent = "maibot-plugin-rsshub (+https://github.com/OMSociety/maibot_plugin_rsshub)"
 
 [network]
 proxy_enabled = false
