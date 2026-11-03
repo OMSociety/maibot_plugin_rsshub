@@ -1,7 +1,7 @@
 """数据行模型（轻量 dataclass，不做 ORM）。
 
-字段语义与源插件 astrbot_plugin_rsshub 的实体保持一致；
-push_mode 在本移植中取代源插件的 send_mode（int 哨兵）。
+继承哨兵统一用 INHERIT_VALUE（-100）与 INHERIT_MODE（"inherit"）；
+推送模式是字符串枚举（persona/direct/silent），由 domain.settings 解析生效值。
 """
 
 from __future__ import annotations

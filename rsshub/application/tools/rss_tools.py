@@ -1,6 +1,6 @@
-"""LLM 工具面：14 个 @Tool。
+"""LLM 工具面：15 个 @Tool。
 
-工具面向模型，参数说明即模型可见文档；业务逻辑转发给 src 下的服务层。
+工具面向模型，参数说明即模型可见文档；业务逻辑转发给 rsshub 下的服务层。
 """
 
 from __future__ import annotations

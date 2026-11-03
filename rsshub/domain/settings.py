@@ -1,6 +1,6 @@
 """四级配置继承解析：订阅 → 会话默认 → 用户 → 全局默认。
 
-继承规则与源插件一致：字段值为 INHERIT_VALUE（-100）或 push_mode/handlers_mode
+继承规则：字段值为 INHERIT_VALUE（-100）或 push_mode/handlers_mode
 为 'inherit' 时向上继承；handlers_mode 的 override 覆盖、disabled 表示停用全部 handler。
 会话默认值来自会话默认表（用户在某会话里设过的偏好），新订阅没写死字段时会用到它。
 """

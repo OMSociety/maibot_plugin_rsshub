@@ -44,7 +44,7 @@ class SubscribeResult:
 def _session_label(platform: str, user_id: str, group_id: str, stream_id: str) -> str:
     """给订阅表生成可读的会话标识：平台名 + 群/私聊 + ID。
 
-    例如 ``QQ群:945523689`` / ``QQ私聊:945523689``；宿主传的 stream_id 是内部哈希，
+    例如 ``QQ群:123456789`` / ``QQ私聊:123456789``；宿主传的 stream_id 是内部哈希，
     人看不出是哪个会话，这里按调用现场的平台、群号、用户号拼一个稳定标签，拿不到
     平台信息就退回原 stream_id。
     """

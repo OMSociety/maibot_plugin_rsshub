@@ -1,11 +1,11 @@
 """内容处理链：ai_filter / ai_transform。
 
-设计口径（沿用源插件 v2 的结论）：
+执行口径：
 - 链按数组顺序串行执行，单个 handler 抛异常只记 trace 并继续；
-- ai_filter 只有显式 JSON `{"allow": false}` 才拦截，其余情况（无提示词、模型失败、
-  输出非法）一律放行；
-- ai_transform 只做 plaintext 作用域（改写标题/摘要/正文）；xml 作用域依赖源插件的
-  XML 校验工具链，本移植不提供，遇到时记 trace 并跳过。
+- ai_filter 只有显式否定判定（`{"allow": false}` 或字符串 "false"）才拦截，其余情况
+  （无提示词、模型失败、输出非法）一律放行；
+- ai_transform 作用于 plaintext（改写标题/摘要/正文）；xml 作用域需要 XML 校验工具链，
+  插件不提供，遇到 xml 作用域时记 trace 并跳过该 handler。
 """
 
 from __future__ import annotations
@@ -191,7 +191,7 @@ class ContentHandlerChain:
 
     async def _run_transform(self, config: dict[str, Any], context: HandlerContext) -> tuple[HandlerContext, bool]:
         if str(config.get("scope") or "plaintext") != "plaintext":
-            self._ctx.logger.info("RSS ai_transform 的 xml 作用域本移植不支持，跳过该 handler")
+            self._ctx.logger.info("RSS ai_transform 只支持 plaintext 作用域，跳过 xml 作用域的 handler")
             return context, False
 
         template = str(config.get("prompt") or _TRANSFORM_PROMPT)

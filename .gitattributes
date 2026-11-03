@@ -1,0 +1,9 @@
+# 统一行尾：仓库内文本文件一律 LF，二进制文件按原样处理。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.pdf binary

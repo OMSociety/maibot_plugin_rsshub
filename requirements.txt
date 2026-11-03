@@ -3,4 +3,5 @@
 feedparser>=6.0.11
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
-filetype>=1.2.0
+# 走 socks 代理时需要；缺它时插件记一条 error 并按直连处理
+socksio>=1.0.0

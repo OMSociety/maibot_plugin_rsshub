@@ -17,9 +17,9 @@ RSS = b"""<?xml version="1.0" encoding="UTF-8"?>
 
 
 def test_session_label_prefers_group_then_private() -> None:
-    assert _session_label("qq", "945523689", "1024", "hash") == "QQ群:1024"
-    assert _session_label("qq", "945523689", "", "hash") == "QQ私聊:945523689"
-    assert _session_label("", "945523689", "", "hash") == "hash"
+    assert _session_label("qq", "123456789", "1024", "hash") == "QQ群:1024"
+    assert _session_label("qq", "123456789", "", "hash") == "QQ私聊:123456789"
+    assert _session_label("", "123456789", "", "hash") == "hash"
 
 
 def test_migration_upgrades_v1_database(tmp_path: object) -> None:

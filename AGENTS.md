@@ -6,7 +6,7 @@
 ## 项目概览
 
 - 一句话定位：MaiBot（麦麦）的 RSS/Atom 订阅插件，负责定时抓取、去重推送，并把订阅读写暴露成 LLM 工具、聊天命令与 WebUI 页面。
-- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.21.0–2.21.99（宿主 MaiBot 1.3.19 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / filetype；pytest + ruff；GitHub Actions 跑声明下限的 SDK。
+- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.21.0–2.21.99（宿主 MaiBot 1.3.19 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / socksio；pytest + ruff；GitHub Actions 跑声明下限的 SDK。
 - 文档索引：
   - 功能、安装、配置、命令与工具表：[README.md](./README.md)
   - 变更记录：[CHANGELOG.md](./CHANGELOG.md)
@@ -23,7 +23,7 @@
 | Lint | `ruff check .` |
 | 格式检查 | `ruff format --check .` |
 | 校验 WebUI 声明 | `python tools/check_webui.py .`（核对 `webui.json` 的 `api` 与 `web_api.py` 的 `@API` 名称、参数一致，页面入口存在且不超过 2 MiB，能力名合法） |
-| 校验本文件 | `python tools/check_agents_md.py --root .` |
+| 校验本文件 | `python tools/check_agents_md.py --root . --no-path`（CI 与本地用同一参数） |
 
 验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.21.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
 
@@ -37,7 +37,7 @@ python -m pytest -q
 plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
   └─> rsshub/interfaces/web_api.py     WebUI 的 8 个 @API
   └─> rsshub/application               services / tools / commands
-        └─> rsshub/domain              实体与三级配置继承
+        └─> rsshub/domain              实体与四级配置继承
         └─> rsshub/infrastructure      persistence / fetcher / media / rendering / schedule
 ```
 
@@ -57,13 +57,13 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 | 加一个聊天命令 | `rsshub/application/commands/rss_commands.py`（`@Command` 的 `pattern` 由宿主用 `re.search` 匹配，参数从 `matched_groups` 取；id 一律 `rss_*`，pattern 一律写成中英等价 `^/(?:english|中文)`；处理函数必须自己 `ctx.send.text`，宿主不代发） |
 | 加或改 WebUI 接口 | `rsshub/interfaces/web_api.py` 加 `@API`，再在 `webui.json` 的 `queries`/`actions` 里声明绑定 |
 | 改抓取、解析、去重 | `rsshub/infrastructure/fetcher/`（`client` / `parser` / `dedup` / `url_guard`） |
-| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `SCHEMA_VERSION` 与迁移；同步 `repositories.py`、`models.py` |
+| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `_MIGRATIONS` 与 `_DDL_V1`；同步 `repositories.py`、`models.py` |
 | 改发送形态 | `rsshub/application/services/dispatcher.py`（persona / direct / silent 三路） |
 | 加测试 | `tests/test_*.py`；宿主与 SDK 的桩在 `tests/support.py` |
 
 ## 数据流
 
-`/sub` 或 `rss_subscribe` → `SubscriptionService`（`normalize_feed_url` + SSRF 校验）→ `HttpClient` 条件抓取 → `parse_feed` → `FeedPoller`（哈希去重、首轮只建基线、投递全成功才推进 ETag）→ `ContentHandlerChain` → `Dispatcher` → `push_history` 落库；`Scheduler` 自起 asyncio 循环按 30 秒 tick 取到期订阅。
+`/sub` 或 `rss_subscribe` → `SubscriptionService`（`normalize_feed_url_async` + SSRF 校验）→ `HttpClient` 条件抓取（手动逐跳重定向，每跳过 url_guard）→ `parse_feed` → `FeedPoller`（哈希去重、首轮只建基线、`entry_hashes` 抓到即合并）→ `ContentHandlerChain` → `Dispatcher` → 按条目写 `push_history`；`Scheduler` 自起 asyncio 循环按 30 秒 tick 取到期订阅，并每天清理过期历史与无订阅的源行。
 
 ## 修改契约
 
@@ -76,6 +76,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 - 用 SDK 新 API：本插件声明下限 2.21.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
 - 工具开关：`plugin.tools_enabled` 关闭时 `get_components()` 会过滤掉全部 TOOL，且每个工具由 `tools_enabled` 装饰器兜底回绝；宿主只在注册时收集组件，所以开关改动必须重载插件才彻底生效。新增工具时把 `@tools_enabled` 放在 `@Tool` 内侧，别漏。
 - 音视频文件只能经工具调用发送：宿主只为模型工具调用签发文件凭证（`ctx.files.*`），后台调度器推送没有凭证，音视频一律附链接行。不要为了「统一体验」把链接行改成 `ctx.files.send`，后台会抛 `PermissionError`。
+- `tools/check_agents_md.py` 与上游 agent-onboarding 技能保持整份一致（已在 `ruff.toml` 的 `exclude` 里排除），升级时整份替换而不是逐行改样式。
 
 ## 禁止操作
 
@@ -83,7 +84,6 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 - 禁止改写已发布的 tag 或 Release。原因：插件市场按 tag 索引版本。要修只能发新版本。
 - 禁止绕过 `rsshub/infrastructure/fetcher/url_guard.py` 直接请求用户给的 URL。原因：它承担 SSRF 拦截（环回、私网、链路本地地址）。
 - 禁止删除 `push_history` 成功的幂等记录来「让测试通过」。原因：去重与重试依赖它，删记录会导致重复推送。
-- 禁止手改 `tools/check_agents_md.py`。原因：它是从 agent-onboarding 技能原样拷贝的校验脚本，改样式会与上游脱节；升级时整份替换即可（已在 `ruff.toml` 的 `exclude` 里排除）。
 
 ## 验收标准
 
@@ -93,7 +93,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 2. `ruff check .`
 3. `ruff format --check .`
 4. `python tools/check_webui.py .`
-5. `python tools/check_agents_md.py --root .`
+5. `python tools/check_agents_md.py --root . --no-path`（CI 用同一参数；`--no-path` 关闭 PATH 兜底，保证本地与 CI 结论一致）
 
 CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 
@@ -110,7 +110,8 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 |---|---|---|
 | `webui.json` | 宿主用严格模型校验，绑定参数多一个字段就会被拒 | 改完调用一次页面动作，确认没有 422 |
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
-| `rsshub/application/services/polling.py` | 未全部投递成功会回滚 ETag，靠推送历史去重 | 改投递逻辑时保留该回滚，否则会漏推 |
+| `rsshub/application/services/polling.py` | 抓到的新条目一律并入 `entry_hashes`（源级已见集合），推送失败不回滚哈希 | 补发走 `push_history` 的失败记录；改投递逻辑时不要用哈希回滚来表达重试 |
+| `rsshub/application/services/dispatcher.py` | 推送历史按条目各存一份文本，发送前按（订阅, 条目）查成功记录做幂等 | 改推送或重试路径时保持「一次只发一条目文本」，并用 `retry_failed` 走补发 |
 | `_manifest.json` | 能力声明与代码不一致时运行期才报错 | 加 `ctx.*` 调用时同一次改动里补声明 |
 | `rsshub/application/services/dispatcher.py` 与 `tools/rss_tools.py` | 音视频只有工具调用能发文件，后台推送附链接；宿主关闭 `[capabilities] files` 时工具调用也拿不到凭证 | 改音视频呈现时先确认调用来源有文件凭证、宿主文件开关已打开；关闭时按链接行退回是预期行为 |
 | `config.toml` | 宿主对未知键是静默忽略，拼错字段名不会报错，只会一直用默认值；重命名字段后旧键仍留在文件里但不生效 | 改配置后到 WebUI 的插件配置页逐项核对，或看宿主 `logs/app_*.log.jsonl` 里 `plugin.omsociety.rsshub` 的日志 |

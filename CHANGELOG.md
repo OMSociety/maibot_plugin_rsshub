@@ -10,11 +10,73 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-03
+
+### 修复
+
+- 推送历史按条目各存一份文本，发送失败后按条目逐条补发；再次推送同一条目前先查成功记录，已送达的跳过。此前整批文本会随重试被重复发送多次
+- 定时轮询重建条目时携带正文 HTML，正文图片与表格渲染恢复；此前只有 `/测试推送` 能看到图
+- HTTP 抓取使用配置里的单源超时（此前传 `None` 等于禁用超时），单源挂起不再拖住整组调度；域名解析移出事件循环
+- 关闭自动重定向并逐跳复核落点，内网地址不再能通过 302 绕过校验
+- 一轮调度里某个源抛异常不再丢弃同轮其它源的投递结果
+- 媒体张数上限为 0 时完全不带图且保留音视频链接；超出上限的成功下载计入 `skipped`；`display_media=2` 开始生效
+- 退订后不再向旧会话补发失败记录；推送历史清理覆盖边界日，并清理没有任何订阅与推送记录的源行
+- 批量导入按真实新增计数，且必须填写目标会话，避免建出不会推送的订阅
+- 订阅间隔限制在 1–1440 分钟；处理链工具校验订阅属主，跨会话读写被拒绝
+- 重复订阅同一地址时复用已有源行，不再产生重复记录
+
+### 新增
+
+- 支持 JSON Feed 1.1 解析
+- 会话默认值参与生效配置解析，顺序为订阅 → 会话默认 → 用户默认 → 全局默认
+
+### 变更
+
+- 移除 `display_via`、`style` 与 `input_scope=both` 这三个从未生效的选项（数据库列保留，不影响既有数据）
+- `display_*` 选项的「0＝继承」说明改为「0＝自动」
+- 新增依赖 `socksio`（socks 代理支持），移除未使用的 `filetype`
+- `/测试推送` 与轮询共用同一套媒体预算：单图 8 秒、整批 12 秒、最多 3 张并发
+
+### 迁移提示
+
+- 升级后新的失败记录重试时只发该条目本身；此前留在历史里的失败记录同样是单条目文本
+- 宿主会在重载插件时按声明安装新增依赖；若 socks 代理不可用，插件记一条 error 并按直连处理
+
+### Fixed
+
+- Push history now stores one text per entry and retries resend a single entry at a time; an entry that already has a success record is skipped on re-push (previously the whole batch text was resent on every retry)
+- The polling path rebuilds entries with their content HTML, so scheduled pushes carry inline images and rendered tables again
+- HTTP fetches use the configured per-feed timeout (a literal `None` used to disable it), and DNS resolution moved off the event loop
+- Redirects are followed manually with a per-hop target check, closing the internal-address bypass through 302
+- A single failing feed no longer discards the delivery results of other feeds in the same tick
+- With the media limit set to 0 no images are attached while audio/video links remain; downloads beyond the limit are counted as `skipped`; `display_media=2` takes effect
+- Failed records are no longer resent to sessions whose subscription was removed; history purge covers the boundary day and orphan feed rows
+- Bulk import counts genuinely new subscriptions and requires a target session
+- Subscription interval is validated to 1–1440 minutes; handler tools verify subscription ownership
+- Concurrent subscriptions to the same address reuse the existing feed row
+
+### Added
+
+- JSON Feed 1.1 parsing
+- Session defaults participate in settings resolution: subscription → session → user → global
+
+### Changed
+
+- Dropped three options that never took effect: `display_via`, `style` and `input_scope=both` (their database columns remain)
+- The `display_*` options now describe `0` as "auto" instead of "inherit"
+- Added the `socksio` dependency for socks proxies and dropped the unused `filetype`
+- Media budget shared by `/测试推送` and polling: 8s per image, 12s per batch, 3 concurrent downloads
+
+### Migration
+
+- Failed records kept from older versions are single-entry texts as well; new retries only send their own entry
+- The host installs newly declared dependencies when the plugin is reloaded; when socks is unavailable the plugin logs an error and connects directly
+
 ## [0.4.0] - 2026-11-02
 
 ### 变更
 
-- 订阅表的会话标签改为可读形式：`QQ群:945523689` / `QQ私聊:945523689`（按平台映射 QQ/微信/Telegram 等），不再直接显示内部 stream_id；订阅表新增 `session_label` 列，数据库迁移到 v2
+- 订阅表的会话标签改为可读形式：`QQ群:123456789` / `QQ私聊:123456789`（按平台映射 QQ/微信/Telegram 等），不再直接显示内部 stream_id；订阅表新增 `session_label` 列，数据库迁移到 v2
 - WebUI 页面整体修缮：订阅与历史页改用宿主原生 `maibot-select`（不再自绘下拉），空列表与空历史给专门提示，链接单元格可折行，标题与说明不再重复
 
 ### 迁移提示
@@ -23,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Subscription session labels now read as `QQ群:945523689` / `QQ私聊:945523689` (platform names mapped) instead of the opaque stream id; a `session_label` column was added and the database migrated to v2
+- Subscription session labels now read as `QQ群:123456789` / `QQ私聊:123456789` (platform names mapped) instead of the opaque stream id; a `session_label` column was added and the database migrated to v2
 - The WebUI page was polished: native `maibot-select` dropdowns replace the custom widget, empty lists get proper placeholders, long links wrap, and duplicated titles are gone
 
 ### Migration
