@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 新增
 
-- 配置项 `media.image_timeout_seconds`（5–120 秒，默认 20）：单张图片的下载超时改为可调，整批按 1.5 倍放宽；图片站的原图常有 10 MB 以上，原先固定的 8 秒在慢速链路上会把图全部跳过
+- 配置项 `media.image_timeout_seconds`（5–60 秒，默认 20）：单张图片的下载超时改为可调，整批按 1.5 倍放宽；图片站的原图常有 10 MB 以上，原先固定的 8 秒在慢速链路上会把图全部跳过
 
 ### 修复
 
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New `media.image_timeout_seconds` setting (5–120 s, default 20): the per-image download timeout is now configurable, with the batch budget set to 1.5× it. Originals on image sites often exceed 10 MB, so the former fixed 8 s skipped every image on a slow link
+- New `media.image_timeout_seconds` setting (5–60 s, default 20): the per-image download timeout is now configurable, with the batch budget set to 1.5× it. Originals on image sites often exceed 10 MB, so the former fixed 8 s skipped every image on a slow link
 
 ### Fixed
 

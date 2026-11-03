@@ -230,7 +230,7 @@ class MediaSection(PluginConfigBase):
     image_timeout_seconds: int = Field(
         default=20,
         ge=5,
-        le=120,
+        le=60,
         description="单张图片允许下载的时间上限，单位秒",
         json_schema_extra={
             "label": "单张图下载超时（秒）",
