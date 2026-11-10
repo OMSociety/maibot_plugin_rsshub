@@ -368,6 +368,8 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
     def _boot(self) -> None:
         config: Any = self.config
         self.store = Store.open(self._db_path())
+        if self.store.added_columns:
+            self.ctx.logger.info("数据库按新版表结构补齐了列：%s", "、".join(self.store.added_columns))
         self.defaults = build_defaults(config)
         proxy = str(config.network.proxy_url) if config.network.proxy_enabled else ""
         if proxy.lower().startswith("socks") and not socksio_available():

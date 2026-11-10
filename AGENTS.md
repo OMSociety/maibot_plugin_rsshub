@@ -57,7 +57,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 | 加一个聊天命令 | `rsshub/application/commands/rss_commands.py`（`@Command` 的 `pattern` 由宿主用 `re.search` 匹配，参数从 `matched_groups` 取；id 一律 `rss_*`，pattern 一律写成中英等价 `^/(?:english|中文)`；处理函数必须自己 `ctx.send.text`，宿主不代发） |
 | 加或改 WebUI 接口 | `rsshub/interfaces/web_api.py` 加 `@API`，再在 `webui.json` 的 `queries`/`actions` 里声明绑定 |
 | 改抓取、解析、去重 | `rsshub/infrastructure/fetcher/`（`client` / `parser` / `dedup` / `url_guard`） |
-| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `_SCHEMA`（单份建表脚本，全部带 `IF NOT EXISTS`）；同步 `repositories.py`、`models.py` |
+| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `_SCHEMA`（单份建表脚本，全部带 `IF NOT EXISTS`）：打开时会按它给老库补缺的列，只加列、不动已有数据；同步 `repositories.py`、`models.py` |
 | 改发送形态 | `rsshub/application/services/dispatcher.py`（persona / direct / silent 三路） |
 | 加测试 | `tests/test_*.py`；宿主与 SDK 的桩在 `tests/support.py` |
 

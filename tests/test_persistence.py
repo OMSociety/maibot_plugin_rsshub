@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -67,3 +68,68 @@ async def test_subscribe_records_readable_session(tmp_path: Path) -> None:
     assert sub.session_label == "QQ群:1024"
     assert store.repos.subs.get(sub.id).session_label == "QQ群:1024"
     store.close()
+
+
+def _write_legacy_db(path: Path) -> None:
+    """造一个旧版库：订阅表没有 fail_count，历史表没有 next_retry_at。"""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE rsshub_subs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            state INTEGER NOT NULL DEFAULT 1,
+            user_id TEXT NOT NULL,
+            feed_id INTEGER NOT NULL,
+            target_session TEXT,
+            next_check_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE rsshub_push_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            status TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO rsshub_subs (user_id, feed_id, target_session, created_at, updated_at) "
+        "VALUES ('u1', 7, 'hash', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_open_adds_missing_columns_and_keeps_rows(tmp_path: Path) -> None:
+    """老库升级：缺的列按建表脚本补上，已有行与数据都在，补完能按新列读写。"""
+    path = tmp_path / "rsshub.db"
+    _write_legacy_db(path)
+
+    store = Store.open(path)
+    try:
+        assert "rsshub_subs.fail_count" in store.added_columns
+        assert "rsshub_push_history.next_retry_at" in store.added_columns
+
+        sub = store.repos.subs.get(1)
+        assert sub is not None and sub.target_session == "hash"
+        assert sub.fail_count == 0
+        store.repos.subs.update(1, fail_count=3)
+        assert store.repos.subs.get(1).fail_count == 3
+
+        store.db.execute(
+            "INSERT INTO rsshub_push_history (user_id, status, created_at, updated_at) VALUES (?,?,?,?)",
+            ("u1", "failed", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        assert store.repos.history.list_retryable() != []
+    finally:
+        store.close()
+
+    store = Store.open(path)
+    try:
+        assert store.added_columns == [], "补过一次的库再打开不该重复补列"
+    finally:
+        store.close()

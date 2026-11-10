@@ -1,7 +1,8 @@
 """SQLite 连接与建表。
 
 插件数据落在宿主分配的 data_dir 下（ctx.paths.data_dir），不写宿主目录。
-建表脚本全部带 IF NOT EXISTS，每次打开都执行一次。
+建表脚本全部带 IF NOT EXISTS，每次打开都执行一次；已有库缺的列按建表脚本补齐，
+所以升级插件时不需要手工改表。
 """
 
 from __future__ import annotations
@@ -128,6 +129,63 @@ def utcnow() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _split_schema(schema: str) -> tuple[str, str]:
+    """把建表脚本拆成「建表」与「建索引」两部分。
+
+    老库的表不会被 IF NOT EXISTS 重建，缺列要等补列之后才存在；
+    索引一旦引用新列，就必须排在补列之后执行。
+    """
+    tables: list[str] = []
+    indexes: list[str] = []
+    for raw in schema.split(";"):
+        statement = raw.strip()
+        if not statement:
+            continue
+        (indexes if statement.upper().startswith("CREATE INDEX") else tables).append(statement)
+    return ";\n".join(tables) + ";", ";\n".join(indexes) + ";"
+
+
+_TABLES_SQL, _INDEXES_SQL = _split_schema(_SCHEMA)
+
+
+def _schema_tables(conn: sqlite3.Connection) -> list[str]:
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'rsshub\\_%' ESCAPE '\\'")
+    return [row[0] for row in rows]
+
+
+def _reconcile_columns(conn: sqlite3.Connection) -> list[str]:
+    """按建表脚本给老库补上缺的列，返回补了哪些（`表.列`）。
+
+    只做加列：已有列的类型与默认值不比对、不修改，已有数据不动。
+    SQLite 的 ADD COLUMN 不接受没有默认值的 NOT NULL 列，遇到这种新列直接报错，
+    让升级者决定怎么填历史数据，而不是静默失败。
+    """
+    reference = sqlite3.connect(":memory:")
+    try:
+        reference.executescript(_SCHEMA)
+        added: list[str] = []
+        for table in _schema_tables(reference):
+            expected = reference.execute(f"PRAGMA table_info({table})").fetchall()
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for _cid, name, ctype, notnull, default, primary in expected:
+                if name in existing or primary:
+                    continue
+                if notnull and default is None:
+                    raise RsshubError(
+                        f"表 {table} 新增的必填列 {name} 没有默认值，无法自动补齐；请先手工迁移历史数据再启动插件"
+                    )
+                ddl = f"ALTER TABLE {table} ADD COLUMN {name} {ctype}"
+                if notnull:
+                    ddl += " NOT NULL"
+                if default is not None:
+                    ddl += f" DEFAULT {default}"
+                conn.execute(ddl)
+                added.append(f"{table}.{name}")
+        return added
+    finally:
+        reference.close()
+
+
 class Database:
     """SQLite 连接封装。
 
@@ -165,11 +223,14 @@ class Database:
             self._conn.close()
             self._conn = None
 
-    def ensure_schema(self) -> None:
-        """建表：脚本幂等，新库一次建全，已有库不改动已有数据。"""
+    def ensure_schema(self) -> list[str]:
+        """建表并补齐老库缺的列，返回补了哪些列（`表.列`）。"""
         self.connect()
-        self.conn.executescript(_SCHEMA)
+        self.conn.executescript(_TABLES_SQL)
+        added = _reconcile_columns(self.conn)
+        self.conn.executescript(_INDEXES_SQL)
         self.conn.commit()
+        return added
 
     def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         return list(self.conn.execute(sql, params))
