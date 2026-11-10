@@ -1,7 +1,7 @@
-"""SQLite 连接与迁移。
+"""SQLite 连接与建表。
 
 插件数据落在宿主分配的 data_dir 下（ctx.paths.data_dir），不写宿主目录。
-迁移以 schema_migrations 表记录版本，按序执行。
+建表脚本全部带 IF NOT EXISTS，每次打开都执行一次。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ...errors import RsshubError
 INHERIT_VALUE = -100
 INHERIT_MODE = "inherit"
 
-_DDL_V1 = """
+_SCHEMA = """
 CREATE TABLE IF NOT EXISTS rsshub_users (
     user_id TEXT PRIMARY KEY,
     state INTEGER NOT NULL DEFAULT 1,
@@ -59,8 +59,10 @@ CREATE TABLE IF NOT EXISTS rsshub_subs (
     tags TEXT NOT NULL DEFAULT '',
     target_session TEXT,
     platform_name TEXT,
+    session_label TEXT,
     interval_minutes INTEGER NOT NULL DEFAULT -100,
     next_check_at TEXT,
+    fail_count INTEGER NOT NULL DEFAULT 0,
     notify INTEGER NOT NULL DEFAULT -100,
     push_mode TEXT NOT NULL DEFAULT 'inherit',
     handlers_mode TEXT NOT NULL DEFAULT 'inherit',
@@ -108,6 +110,7 @@ CREATE TABLE IF NOT EXISTS rsshub_push_history (
     retry_count INTEGER NOT NULL DEFAULT 0,
     max_retries INTEGER NOT NULL DEFAULT 3,
     fail_reason TEXT,
+    next_retry_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     completed_at TEXT
@@ -116,29 +119,13 @@ CREATE TABLE IF NOT EXISTS rsshub_push_history (
 CREATE INDEX IF NOT EXISTS idx_history_session ON rsshub_push_history(target_session);
 CREATE INDEX IF NOT EXISTS idx_history_status ON rsshub_push_history(status);
 CREATE INDEX IF NOT EXISTS idx_history_entry ON rsshub_push_history(entry_link);
-
-CREATE TABLE IF NOT EXISTS rsshub_schema_migrations (
-    version TEXT PRIMARY KEY,
-    applied_at TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT ''
-);
+CREATE INDEX IF NOT EXISTS idx_history_retry ON rsshub_push_history(status, next_retry_at);
 """
 
 
 def utcnow() -> str:
     """当前 UTC 时间（ISO 8601，秒级）。"""
     return datetime.now(UTC).isoformat(timespec="seconds")
-
-
-_DDL_V2 = """
-ALTER TABLE rsshub_subs ADD COLUMN session_label TEXT;
-"""
-
-# 版本化迁移：新库按顺序执行，老库只补未应用的步骤。
-_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
-    ("1", _DDL_V1, "初始表结构"),
-    ("2", _DDL_V2, "订阅表增加会话显示名"),
-)
 
 
 class Database:
@@ -178,25 +165,11 @@ class Database:
             self._conn.close()
             self._conn = None
 
-    def migrate(self) -> None:
-        """按版本顺序执行未应用的迁移。"""
+    def ensure_schema(self) -> None:
+        """建表：脚本幂等，新库一次建全，已有库不改动已有数据。"""
         self.connect()
-        conn = self.conn
-        conn.executescript(
-            "CREATE TABLE IF NOT EXISTS rsshub_schema_migrations ("
-            "version TEXT PRIMARY KEY, applied_at TEXT NOT NULL,"
-            "description TEXT NOT NULL DEFAULT '')"
-        )
-        applied = {row["version"] for row in conn.execute("SELECT version FROM rsshub_schema_migrations")}
-        for version, script, description in _MIGRATIONS:
-            if version in applied:
-                continue
-            conn.executescript(script)
-            conn.execute(
-                "INSERT INTO rsshub_schema_migrations(version, applied_at, description) VALUES (?,?,?)",
-                (version, utcnow(), description),
-            )
-            conn.commit()
+        self.conn.executescript(_SCHEMA)
+        self.conn.commit()
 
     def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         return list(self.conn.execute(sql, params))

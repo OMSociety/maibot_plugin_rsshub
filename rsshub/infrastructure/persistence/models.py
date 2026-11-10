@@ -56,6 +56,7 @@ class Subscription:
     session_label: str = ""
     interval_minutes: int = INHERIT_VALUE
     next_check_at: str | None = None
+    fail_count: int = 0
     notify: int = INHERIT_VALUE
     push_mode: str = INHERIT_MODE
     handlers_mode: str = INHERIT_MODE
@@ -92,6 +93,7 @@ class PushHistory:
     retry_count: int = 0
     max_retries: int = 3
     fail_reason: str | None = None
+    next_retry_at: str | None = None
     created_at: str = ""
     updated_at: str = ""
     completed_at: str | None = None
@@ -151,6 +153,7 @@ def sub_from_row(row: Any) -> Subscription:
         session_label=row["session_label"] or "",
         interval_minutes=row["interval_minutes"],
         next_check_at=row["next_check_at"],
+        fail_count=row["fail_count"],
         notify=row["notify"],
         push_mode=row["push_mode"],
         handlers_mode=row["handlers_mode"],
@@ -188,6 +191,7 @@ def history_from_row(row: Any) -> PushHistory:
         retry_count=row["retry_count"],
         max_retries=row["max_retries"],
         fail_reason=row["fail_reason"],
+        next_retry_at=row["next_retry_at"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         completed_at=row["completed_at"],

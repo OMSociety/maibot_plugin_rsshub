@@ -18,6 +18,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ...domain.entry import Entry
@@ -34,6 +35,10 @@ PUSH_MODES = ("persona", "direct", "silent")
 # 注入消息的短 ID 长度：宿主对 ≤12 字符的 ID 原样展示，麦麦在回复里直接引用它取图。
 _CONTEXT_MESSAGE_ID_DIGITS = 8
 _CONTEXT_MESSAGE_ID_PREFIX = "rss"
+
+# 重发失败后的退避：60 秒起逐次翻倍，封顶 1 小时；调度器每 30 秒扫一次到期记录。
+_RETRY_BASE_SECONDS = 60
+_RETRY_MAX_SECONDS = 3600
 
 
 @dataclass
@@ -238,6 +243,7 @@ class Dispatcher:
                     status=status,
                     retry_count=retries,
                     fail_reason="重发失败",
+                    next_retry_at=_future(_retry_delay_seconds(retries)) if status == "failed" else None,
                 )
         return recovered
 
@@ -414,6 +420,7 @@ class Dispatcher:
             target_session=stream_id,
             status="success" if delivered else "failed",
             fail_reason=None if delivered else "发送失败",
+            next_retry_at=None if delivered else _future(_RETRY_BASE_SECONDS),
             max_retries=3,
         )
         self._store.repos.history.add(record)
@@ -458,3 +465,13 @@ def _now() -> str:
     from ...infrastructure.persistence.database import utcnow
 
     return utcnow()
+
+
+def _future(seconds: int) -> str:
+    """相对当前时间推后若干秒的 ISO 时间戳，用于重发退避。"""
+    return (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat(timespec="seconds")
+
+
+def _retry_delay_seconds(retry_count: int) -> int:
+    """重发退避：60 秒起逐次翻倍，封顶 1 小时。"""
+    return min(_RETRY_BASE_SECONDS * 2 ** min(retry_count, 6), _RETRY_MAX_SECONDS)

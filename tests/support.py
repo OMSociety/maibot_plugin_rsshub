@@ -32,6 +32,9 @@ class StubLogger:
     def exception(self, message: str, *args: object) -> None:
         self._record("exception", message, *args)
 
+    def opt(self, **kwargs: object) -> StubLogger:
+        return self
+
 
 class StubSend:
     def __init__(self, fail_text: int = 0) -> None:
@@ -144,6 +147,7 @@ class FakeClient:
         self.payloads = payloads or {}
         self.delays = delays or {}
         self.calls: list[dict] = []
+        self.fail_with: Exception | None = None
 
     async def fetch(
         self,
@@ -162,6 +166,8 @@ class FakeClient:
         )
         if url in self.delays:
             await asyncio.sleep(self.delays[url])
+        if self.fail_with is not None:
+            raise self.fail_with
         if url in self.payloads:
             return FetchResult(
                 url=url, status=200, content=self.payloads[url], headers=self.headers, not_modified=False
@@ -216,3 +222,9 @@ def make_config(**overrides: object) -> SimpleNamespace:
     for key, value in overrides.items():
         setattr(config, key, value)
     return config
+
+
+def make_retries_due(store: object) -> None:
+    """把失败记录的退避时间清掉，模拟「退避到期」后再走重试。"""
+    for row in store.db.query("SELECT id FROM rsshub_push_history WHERE status='failed'"):  # type: ignore[attr-defined]
+        store.repos.history.update(row["id"], next_retry_at=None)  # type: ignore[attr-defined]

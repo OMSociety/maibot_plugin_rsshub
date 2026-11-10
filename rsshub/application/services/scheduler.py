@@ -92,8 +92,12 @@ class Scheduler:
                         outcome.error or "-",
                     )
 
-        # 一组抛出的非 FeedFetchError 异常不应该吃掉同轮其它组的投递结果。
-        await asyncio.gather(*(run_group(feed, subs) for feed, subs in groups), return_exceptions=True)
+        # 一组抛出的非 FeedFetchError 异常不应该吃掉同轮其它组的投递结果；
+        # 但 gather 会把它们收进返回值，所以这里逐条记日志，否则组内异常彻底无声。
+        results = await asyncio.gather(*(run_group(feed, subs) for feed, subs in groups), return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                self._ctx.logger.opt(exception=result).error("RSS 轮询组异常退出: %r", result)
 
     # ── 内部 ────────────────────────────────────────────────────
 

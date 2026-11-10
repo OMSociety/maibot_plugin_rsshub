@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "omsociety.rsshub",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "name": "RSSHub 订阅推送",
   "description": "RSS/Atom/JSON Feed 订阅、定时轮询与人格化推送，支持四级配置继承、推送历史审计与富媒体渲染",
   "author": {
@@ -16,12 +16,12 @@
     "issues": "https://github.com/OMSociety/maibot_plugin_rsshub/issues"
   },
   "host_application": {
-    "min_version": "1.3.19",
-    "max_version": "1.3.99"
+    "min_version": "1.4.0",
+    "max_version": "1.4.99"
   },
   "sdk": {
-    "min_version": "2.21.0",
-    "max_version": "2.21.99"
+    "min_version": "2.20.0",
+    "max_version": "2.22.99"
   },
   "dependencies": [
     {

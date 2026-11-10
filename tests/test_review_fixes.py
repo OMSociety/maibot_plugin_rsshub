@@ -16,7 +16,7 @@ from rsshub.infrastructure.fetcher.parser import parse_feed
 from rsshub.infrastructure.media.downloader import MediaDownloader
 from rsshub.infrastructure.persistence.models import Feed, PushHistory, Subscription
 from rsshub.infrastructure.persistence.store import Store
-from tests.support import FakeClient, StubCtx, make_config
+from tests.support import FakeClient, StubCtx, make_config, make_retries_due
 
 RSS = b"""<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0"><channel><title>a</title>
@@ -73,6 +73,7 @@ async def test_dr01_retry_resends_each_entry_text_once(store: Store, tmp_path: o
     assert len(texts) == 3, "每条记录应各存自己的文本"
     assert all("第1篇" in record.content or "第2篇" in record.content or "第3篇" in record.content for record in failed)
 
+    make_retries_due(store)
     recovered = await dispatcher.retry_failed()
     assert recovered == 3
     sent = [text for _, text in ctx.send.sent]
@@ -104,6 +105,7 @@ async def test_dr25_retry_stops_for_deleted_subscription(store: Store, tmp_path:
     await dispatcher.push(sub=sub, feed=feed, entries=entries, settings=_settings(), stream_id="s1")
 
     store.repos.subs.delete(sub.id)
+    make_retries_due(store)
     recovered = await dispatcher.retry_failed()
 
     assert recovered == 0

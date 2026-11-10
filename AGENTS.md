@@ -1,12 +1,12 @@
 # AGENTS.md — maibot_plugin_rsshub Agent 宪法
 
 适用范围：本仓库全部目录。子目录若出现 AGENTS.md，以更接近改动点的那份为准。
-最后更新：2026-11-03
+最后更新：2026-11-11
 
 ## 项目概览
 
 - 一句话定位：MaiBot（麦麦）的 RSS/Atom 订阅插件，负责定时抓取、去重推送，并把订阅读写暴露成 LLM 工具、聊天命令与 WebUI 页面。
-- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.21.0–2.21.99（宿主 MaiBot 1.3.19 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / socksio；pytest + ruff；GitHub Actions 跑声明下限的 SDK。
+- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.20.0–2.22.99（宿主 MaiBot 1.4.0 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / socksio；pytest + ruff；GitHub Actions 在声明下限与当前宿主版本上各跑一遍。
 - 文档索引：
   - 功能、安装、配置、命令与工具表：[README.md](./README.md)
   - 变更记录：[CHANGELOG.md](./CHANGELOG.md)
@@ -17,7 +17,7 @@
 
 | 目的 | 命令 |
 |---|---|
-| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.21.0"` |
+| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.20.0"` |
 | 跑全部测试 | `python -m pytest -q` |
 | 跑单个测试文件 | `python -m pytest tests/test_dispatcher.py -q` |
 | Lint | `ruff check .` |
@@ -25,7 +25,7 @@
 | 校验 WebUI 声明 | `python tools/check_webui.py .`（核对 `webui.json` 的 `api` 与 `web_api.py` 的 `@API` 名称、参数一致，页面入口存在且不超过 2 MiB，能力名合法） |
 | 校验本文件 | `python tools/check_agents_md.py --root . --no-path`（CI 与本地用同一参数） |
 
-验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.21.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
+验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.20.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
 
 ```bash
 python -m pytest -q
@@ -57,13 +57,13 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 | 加一个聊天命令 | `rsshub/application/commands/rss_commands.py`（`@Command` 的 `pattern` 由宿主用 `re.search` 匹配，参数从 `matched_groups` 取；id 一律 `rss_*`，pattern 一律写成中英等价 `^/(?:english|中文)`；处理函数必须自己 `ctx.send.text`，宿主不代发） |
 | 加或改 WebUI 接口 | `rsshub/interfaces/web_api.py` 加 `@API`，再在 `webui.json` 的 `queries`/`actions` 里声明绑定 |
 | 改抓取、解析、去重 | `rsshub/infrastructure/fetcher/`（`client` / `parser` / `dedup` / `url_guard`） |
-| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `_MIGRATIONS` 与 `_DDL_V1`；同步 `repositories.py`、`models.py` |
+| 改表结构 | `rsshub/infrastructure/persistence/database.py` 的 `_SCHEMA`（单份建表脚本，全部带 `IF NOT EXISTS`）；同步 `repositories.py`、`models.py` |
 | 改发送形态 | `rsshub/application/services/dispatcher.py`（persona / direct / silent 三路） |
 | 加测试 | `tests/test_*.py`；宿主与 SDK 的桩在 `tests/support.py` |
 
 ## 数据流
 
-`/sub` 或 `rss_subscribe` → `SubscriptionService`（`normalize_feed_url_async` + SSRF 校验）→ `HttpClient` 条件抓取（手动逐跳重定向，每跳过 url_guard）→ `parse_feed` → `FeedPoller`（哈希去重、首轮只建基线、`entry_hashes` 抓到即合并）→ `ContentHandlerChain` → `Dispatcher` → 按条目写 `push_history`；`Scheduler` 自起 asyncio 循环按 30 秒 tick 取到期订阅，并每天清理过期历史与无订阅的源行。
+`/sub` 或 `rss_subscribe` → `SubscriptionService`（`normalize_feed_url_async` + SSRF 校验）→ `HttpClient` 条件抓取（手动逐跳重定向，每跳过 url_guard）→ `parse_feed` → `FeedPoller`（哈希去重、首轮只建基线、`entry_hashes` 抓到即合并）→ `ContentHandlerChain` → `Dispatcher` → 按条目写 `push_history`；`Scheduler` 自起 asyncio 循环按 30 秒 tick 取到期订阅，并每天清理过期历史与无订阅的源行。抓取失败按连续失败次数翻倍推迟 `next_check_at`（封顶 6 小时），推送失败写 `next_retry_at` 退避重发。
 
 ## 修改契约
 
@@ -73,7 +73,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。
 - `plugin.config_version` 与 `_manifest.json` 的 `version` 相互独立：前者只跟配置结构走，发版不必动它。
 - 改依赖：Python 包同时写进 `requirements.txt` 与 `_manifest.json` 的 `dependencies`。
-- 用 SDK 新 API：本插件声明下限 2.21.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
+- 用 SDK 新 API：本插件声明下限 2.20.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
 - 工具开关：`plugin.tools_enabled` 关闭时 `get_components()` 会过滤掉全部 TOOL，且每个工具由 `tools_enabled` 装饰器兜底回绝；宿主只在注册时收集组件，所以开关改动必须重载插件才彻底生效。新增工具时把 `@tools_enabled` 放在 `@Tool` 内侧，别漏。
 - 音视频文件只能经工具调用发送：宿主只为模型工具调用签发文件凭证（`ctx.files.*`），后台调度器推送没有凭证，音视频一律附链接行。不要为了「统一体验」把链接行改成 `ctx.files.send`，后台会抛 `PermissionError`。
 - `tools/check_agents_md.py` 与上游 agent-onboarding 技能保持整份一致（已在 `ruff.toml` 的 `exclude` 里排除），升级时整份替换而不是逐行改样式。
@@ -87,7 +87,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 验收标准
 
-改动完成 = 下列全部通过（CI 在 SDK 2.21.0 上跑一遍）：
+改动完成 = 下列全部通过（CI 在 SDK 2.20.0 与 2.22.1 上各跑一遍）：
 
 1. `python -m pytest -q`
 2. `ruff check .`
@@ -95,7 +95,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 4. `python tools/check_webui.py .`
 5. `python tools/check_agents_md.py --root . --no-path`（CI 用同一参数；`--no-path` 关闭 PATH 兜底，保证本地与 CI 结论一致）
 
-CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
+CI 跑两个点：声明下限 SDK 2.20.0 与当前宿主所用 SDK 2.22.1；补丁版之间不逐个跑。
 
 ## 提交与协作
 
@@ -111,6 +111,7 @@ CI 跑声明下限 SDK 2.21.0；补丁版之间不逐个跑。
 | `webui.json` | 宿主用严格模型校验，绑定参数多一个字段就会被拒 | 改完调用一次页面动作，确认没有 422 |
 | `rsshub/infrastructure/fetcher/dedup.py` | 首轮 `entry_hashes` 为空时只建基线不推送 | 联调要造「新条目」时改哈希或清条件头，不要删库重建 |
 | `rsshub/application/services/polling.py` | 抓到的新条目一律并入 `entry_hashes`（源级已见集合），推送失败不回滚哈希 | 补发走 `push_history` 的失败记录；改投递逻辑时不要用哈希回滚来表达重试 |
+| `rsshub/application/services/polling.py` 的 `_advance_schedule` 与 `rsshub/application/services/dispatcher.py` 的 `_retry_delay_seconds` | 抓取失败按 `fail_count` 把 `next_check_at` 翻倍推迟（封顶 6 小时），成功一次清零；推送失败写 `next_retry_at`（60 秒起翻倍，封顶 1 小时），`list_retryable` 只取到期记录 | 改退避时两个上限都要保留，否则一个坏源会把整个调度轮拖成高频重试 |
 | `rsshub/application/services/dispatcher.py` | 推送历史按条目各存一份文本，发送前按（订阅, 条目）查成功记录做幂等 | 改推送或重试路径时保持「一次只发一条目文本」，并用 `retry_failed` 走补发 |
 | `rsshub/infrastructure/persistence/repositories.py` 的 `list_active` / `list_all` | 调度器与概览只取 `list_active()`（`state=1`），WebUI 订阅列表与历史会话名取 `list_all()`；停用只改 `state`，删库才算取消 | 改订阅可见性时别把 `list_active` 用在页面列表上，否则停用的订阅无法再从页面启用 |
 | `rsshub/infrastructure/media/compressor.py` 与 `dispatcher._send_silent` | 注入的图会留在聊天历史里，按 1 MiB 预算压缩；注入消息带 ≤12 字符的 `message_id`，宿主的回复编排据此把图引用进麦麦的回复 | 改注入路径时保持「图片段与 message_id 在同一条注入消息里」，预算与 ID 长度不要放宽到宿主原样展示阈值之外 |

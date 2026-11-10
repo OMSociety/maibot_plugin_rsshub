@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from rsshub.application.services.content_handler import ContentHandlerChain
 from rsshub.application.services.dispatcher import Dispatcher
 from rsshub.application.services.polling import FeedPoller, build_defaults
 from rsshub.domain.entry import Entry
+from rsshub.errors import FeedFetchError
 from rsshub.infrastructure.persistence.models import Feed, Subscription
 from rsshub.infrastructure.persistence.store import Store
-from tests.support import FakeClient, StubCtx, make_config
+from tests.support import FakeClient, StubCtx, make_config, make_retries_due
 
 FEED_URL = "https://example.com/feed.xml"
 IMAGE_URL = "https://example.com/pic.png"
@@ -110,6 +113,7 @@ async def test_dr02_failed_push_still_merges_hashes_and_records_per_entry(tmp_pa
     assert len({record.content for record in failed}) == 2
     assert all("基线" not in record.content for record in failed)
 
+    make_retries_due(harness.store)
     recovered = await harness.dispatcher.retry_failed()
     assert recovered == 2
     retried = [text for _, text in harness.ctx.send.sent]
@@ -138,3 +142,51 @@ def test_latest_entries_orders_by_time_desc() -> None:
     document = FeedDocument(url=FEED_URL, title="t", entries=[Entry(title="a"), Entry(title="b")])
 
     assert len(document.latest_entries(1)) == 1
+
+
+def _delay_seconds(iso: str) -> float:
+    return (datetime.fromisoformat(iso) - datetime.now(UTC)).total_seconds()
+
+
+@pytest.mark.asyncio
+async def test_fetch_failure_backs_off_and_success_resets(tmp_path: object) -> None:
+    """抓取失败按连续次数翻倍退避，抓到一次就恢复订阅自己的间隔。"""
+    harness = _harness(tmp_path, _rss(_item("g1", "基线")))
+    feed, sub = harness.add_subscription()
+    await harness.poller.poll(feed, [sub])
+    interval = harness.defaults.interval_seconds
+
+    harness.client.fail_with = FeedFetchError("连接被重置")
+    await harness.poller.poll(harness.store.repos.feeds.get(feed.id), [sub])
+    first = harness.store.repos.subs.get(sub.id)
+    assert first.fail_count == 1
+    assert interval * 2 - 5 <= _delay_seconds(first.next_check_at) <= interval * 2 + 5
+
+    await harness.poller.poll(harness.store.repos.feeds.get(feed.id), [sub])
+    second = harness.store.repos.subs.get(sub.id)
+    assert second.fail_count == 2
+    assert interval * 4 - 5 <= _delay_seconds(second.next_check_at) <= interval * 4 + 5
+
+    harness.client.fail_with = None
+    await harness.poller.poll(harness.store.repos.feeds.get(feed.id), [sub])
+    recovered = harness.store.repos.subs.get(sub.id)
+    assert recovered.fail_count == 0
+    assert interval - 5 <= _delay_seconds(recovered.next_check_at) <= interval + 5
+
+
+@pytest.mark.asyncio
+async def test_backoff_is_capped(tmp_path: object) -> None:
+    """连续失败很多次也不会把下一轮推到 6 小时之后。"""
+    from rsshub.application.services.polling import BACKOFF_MAX_SECONDS
+
+    harness = _harness(tmp_path, _rss(_item("g1", "基线")))
+    feed, sub = harness.add_subscription()
+    await harness.poller.poll(feed, [sub])
+
+    harness.store.repos.subs.update(sub.id, fail_count=20)
+    harness.client.fail_with = FeedFetchError("一直失败")
+    await harness.poller.poll(harness.store.repos.feeds.get(feed.id), [harness.store.repos.subs.get(sub.id)])
+
+    capped = harness.store.repos.subs.get(sub.id)
+    assert capped.fail_count == 21
+    assert _delay_seconds(capped.next_check_at) <= BACKOFF_MAX_SECONDS + 5

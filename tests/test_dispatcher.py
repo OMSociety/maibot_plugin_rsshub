@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from rsshub.application.services.dispatcher import Dispatcher
@@ -10,6 +12,10 @@ from rsshub.domain.settings import EffectiveSettings
 from rsshub.infrastructure.persistence.models import Feed, Subscription
 from rsshub.infrastructure.persistence.store import Store
 from tests.support import StubCtx, make_config
+
+
+def _delay_seconds(iso: str) -> float:
+    return (datetime.fromisoformat(iso) - datetime.now(UTC)).total_seconds()
 
 
 def _settings(mode: str) -> EffectiveSettings:
@@ -91,3 +97,29 @@ async def test_silent_mode_injects_and_triggers_thinking(store: Store, tmp_path:
     assert ctx.mai_append_calls and ctx.mai_append_calls[0]["replyable"] is False
     assert ctx.send.sent == [], "注入模式不直接往会话发消息"
     assert len(ctx.mai_proactive_calls) == 1, "注入模式每次都要请麦麦想一轮"
+
+
+@pytest.mark.asyncio
+async def test_failed_push_schedules_retry_and_waits_for_due_time(store: Store, tmp_path: object) -> None:
+    """发送失败记一条可重发记录，并给出退避时间；没到点前调度器不会取走它。"""
+    ctx = StubCtx(tmp_path, fail_text=1)  # type: ignore[arg-type]
+    feed, sub, entries = _fixtures(store)
+    dispatcher = Dispatcher(ctx, store, make_config())
+
+    await dispatcher.push(sub=sub, feed=feed, entries=entries, settings=_settings("direct"), stream_id="s1")
+
+    record = store.repos.history.list_by_session("s1")[0]
+    assert record.status == "failed"
+    assert record.next_retry_at is not None
+    assert 55 <= _delay_seconds(record.next_retry_at) <= 65
+    assert store.repos.history.list_retryable() == [], "退避期内的记录不该被取走"
+
+    store.repos.history.update(record.id, next_retry_at=None)
+    assert len(store.repos.history.list_retryable()) == 1
+
+    ctx.send.fail_text = 1
+    assert await dispatcher.retry_failed() == 0
+    retried = store.repos.history.get(record.id)
+    assert retried.retry_count == 1
+    assert retried.next_retry_at is not None
+    assert 115 <= _delay_seconds(retried.next_retry_at) <= 125, "第二次退避翻倍"

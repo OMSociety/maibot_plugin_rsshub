@@ -39,6 +39,11 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+# 抓取失败的退避上限：连续失败时按订阅自己的间隔逐次翻倍，最长 6 小时一跳。
+BACKOFF_MAX_SECONDS = 6 * 3600
+_BACKOFF_MAX_DOUBLINGS = 8
+
+
 class FeedPoller:
     """按 feed 抓取一次并推送给该 feed 下所有订阅。"""
 
@@ -66,7 +71,7 @@ class FeedPoller:
         except FeedFetchError as exc:
             outcome.error = str(exc)
             self._ctx.logger.warning("RSS 抓取失败 %s: %s", feed.link, exc)
-            self._advance_schedule(subs)
+            self._advance_schedule(subs, failed=True)
             return outcome
 
         if result.not_modified:
@@ -79,7 +84,7 @@ class FeedPoller:
         except FeedFetchError as exc:
             outcome.error = str(exc)
             self._ctx.logger.warning("RSS 解析失败 %s: %s", feed.link, exc)
-            self._advance_schedule(subs)
+            self._advance_schedule(subs, failed=True)
             return outcome
 
         known = set(feed.entry_hashes)
@@ -201,13 +206,20 @@ class FeedPoller:
         feed.last_modified = result.headers.get("Last-Modified") or feed.last_modified
         self._store.repos.feeds.save(feed)
 
-    def _advance_schedule(self, subs: list[Subscription]) -> None:
+    def _advance_schedule(self, subs: list[Subscription], *, failed: bool = False) -> None:
         base_defaults = self._defaults
         for sub in subs:
             user = self._store.repos.users.get(sub.user_id)
             settings = resolve_settings(sub, user, base_defaults, self._session_defaults(sub.target_session))
-            next_at = (_now() + timedelta(seconds=settings.interval_seconds)).isoformat(timespec="seconds")
-            self._store.repos.subs.update(sub.id, next_check_at=next_at)
+            fail_count = (sub.fail_count + 1) if failed else 0
+            delay = settings.interval_seconds
+            if fail_count:
+                delay = min(delay * 2 ** min(fail_count, _BACKOFF_MAX_DOUBLINGS), BACKOFF_MAX_SECONDS)
+            next_at = (_now() + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            self._store.repos.subs.update(sub.id, next_check_at=next_at, fail_count=fail_count)
+            sub.fail_count = fail_count
+            if failed:
+                self._ctx.logger.info("RSS 订阅 #%s 连续失败 %d 次，下一轮推迟 %d 秒", sub.id, fail_count, delay)
 
     def _session_defaults(self, stream_id: str | None) -> dict[str, Any]:
         if not stream_id:

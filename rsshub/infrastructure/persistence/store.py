@@ -19,8 +19,7 @@ class Store:
     def open(cls, db_path: Path) -> Store:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         database = Database(db_path)
-        database.connect()
-        database.migrate()
+        database.ensure_schema()
         return cls(database)
 
     def close(self) -> None:

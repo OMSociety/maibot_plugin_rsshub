@@ -50,6 +50,7 @@ _SUB_COLUMNS = frozenset(
         "session_label",
         "interval_minutes",
         "next_check_at",
+        "fail_count",
         "notify",
         "push_mode",
         "handlers_mode",
@@ -69,6 +70,7 @@ _HISTORY_COLUMNS = frozenset(
         "retry_count",
         "max_retries",
         "fail_reason",
+        "next_retry_at",
         "completed_at",
         "content",
         "media_urls",
@@ -313,8 +315,8 @@ class PushHistoryRepository:
         history.id = self._db.execute(
             "INSERT INTO rsshub_push_history(sub_id, user_id, feed_id, source_type, source_key, content, raw_xml, "
             "media_urls, handler_trace, entry_title, entry_link, entry_guid, feed_title, feed_link, platform_name, "
-            "target_session, status, retry_count, max_retries, fail_reason, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "target_session, status, retry_count, max_retries, fail_reason, next_retry_at, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 history.sub_id,
                 history.user_id,
@@ -336,6 +338,7 @@ class PushHistoryRepository:
                 history.retry_count,
                 history.max_retries,
                 history.fail_reason,
+                history.next_retry_at,
                 now,
                 now,
             ),
@@ -371,8 +374,9 @@ class PushHistoryRepository:
 
     def list_retryable(self, limit: int = 50) -> list[PushHistory]:
         rows = self._db.query(
-            "SELECT * FROM rsshub_push_history WHERE status='failed' AND retry_count < max_retries ORDER BY id LIMIT ?",
-            (limit,),
+            "SELECT * FROM rsshub_push_history WHERE status='failed' AND retry_count < max_retries "
+            "AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY id LIMIT ?",
+            (utcnow(), limit),
         )
         return [history_from_row(row) for row in rows]
 
