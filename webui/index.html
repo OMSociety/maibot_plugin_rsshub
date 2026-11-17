@@ -229,12 +229,19 @@
       return node;
     }
 
+    function selectLink() {
+      const input = $('link-url');
+      input.focus({ preventScroll: true });
+      input.select();
+      input.setSelectionRange(0, input.value.length);
+      return input;
+    }
+
     function showLink(href, label) {
       $('link-title').textContent = label || '订阅链接';
       $('link-url').value = href || '';
       $('link-preview').classList.remove('hidden');
-      $('link-url').focus();
-      $('link-url').select();
+      selectLink();
     }
 
     function link(href, label) {
@@ -509,15 +516,34 @@
     $('history-prev').addEventListener('click', () => { if (state.history.page > 1) loadHistory(state.history.page - 1); });
     $('history-next').addEventListener('click', () => { if (state.history.page < state.history.pages) loadHistory(state.history.page + 1); });
     $('close-link').addEventListener('click', () => $('link-preview').classList.add('hidden'));
+    function legacyCopyLink() {
+      const input = selectLink();
+      if (!input.value || typeof document.execCommand !== 'function') return false;
+      try {
+        return document.execCommand('copy');
+      } catch {
+        return false;
+      }
+    }
+
     $('copy-link').addEventListener('click', async () => {
       const input = $('link-url');
-      try {
-        await navigator.clipboard.writeText(input.value);
-        toast('地址已复制');
-      } catch {
-        input.focus(); input.select();
-        toast('已选中地址，请使用复制命令');
+      if (!input.value) { toast('没有可复制的地址', true); return; }
+      if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(input.value);
+          toast('地址已复制');
+          return;
+        } catch {
+          // 继续尝试同步复制；某些浏览器会在权限拒绝后仍允许 execCommand。
+        }
       }
+      if (legacyCopyLink()) {
+        toast('地址已复制');
+        return;
+      }
+      selectLink();
+      toast('浏览器未允许自动复制，地址已选中，请按 Ctrl+C（Mac 用 ⌘C）', true);
     });
     $('do-import').addEventListener('click', async () => {
       const links = $('import-links').value.trim();
