@@ -1,8 +1,6 @@
-<p align="center"><strong>中文</strong></p>
-
 <div align="center">
 
-<h1><img src="assets/icon.png" width="192" alt="RSSHub 订阅推送"><br>RSSHub 订阅推送（MaiBot 插件）</h1>
+<h1><img src="assets/icon.png" width="192" alt="RSSHub 订阅推送"><br>RSSHub 订阅推送</h1>
 
 **把 RSS/Atom/JSON Feed 订阅接入麦麦** —— 定时轮询 · 去重推送 · 人格化播报 · 富媒体渲染
 
