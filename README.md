@@ -16,8 +16,6 @@
 
 ---
 
-本插件自 AstrBot 插件 [astrbot_plugin_rsshub](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub)（作者 FlanChanXwO）移植并重设计，遵循 AGPL-3.0。
-
 > **提示：宿主要开「文件功能」开关。**
 >
 > 音频与视频要按原文件发出，必须在宿主设置里打开 **设置 → 能力 → 文件功能**（配置文件里的 `[capabilities] files = true`，宿主默认关闭）。开关关着时插件照常推送，只是音视频改为在正文末尾附链接；定时推送无论开关如何都走链接，因为宿主的文件凭证只发给模型工具调用。
