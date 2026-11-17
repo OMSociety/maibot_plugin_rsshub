@@ -1,13 +1,17 @@
 """WebUI 管理接口：订阅列表、推送历史、参数修改与立即抓取。
 
-页面声明在 webui.json，前端在 webui/index.html；这里只提供静态 API，
-参数与返回都满足宿主 WebUI 协议（返回 ≤ 512 KiB、单次预算 10 秒）。
+页面声明在 webui.json，前端在 webui/index.html；查询与修改走宿主 API，
+批量导入只创建后台任务并立即返回，进度由独立查询读取。参数与返回满足宿主
+WebUI 协议（返回 ≤ 512 KiB、单次 API 预算 10 秒）。
 """
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from maibot_sdk import API
 
@@ -17,6 +21,41 @@ from ..errors import RsshubError
 
 _MAX_PAGE_SIZE = 100
 _VALID_STATUS = {"success", "failed", "stopped", "skipped"}
+_IMPORT_FAILURE_DETAILS = 20
+_IMPORT_JOB_RETENTION = 32
+_IMPORT_TERMINAL_STATUS = {"completed", "failed", "cancelled"}
+
+
+@dataclass
+class _ImportJob:
+    """一次批量导入的内存进度；订阅本身仍由业务服务写入 SQLite。"""
+
+    job_id: str
+    links: list[str]
+    session: str
+    title: str
+    status: str = "running"
+    processed: int = 0
+    imported: int = 0
+    duplicated: int = 0
+    failed_count: int = 0
+    failed: list[str] = field(default_factory=list)
+    current: str = ""
+    error: str = ""
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "status": self.status,
+            "total": len(self.links),
+            "processed": self.processed,
+            "imported": self.imported,
+            "duplicated": self.duplicated,
+            "failed_count": self.failed_count,
+            "failed": list(self.failed),
+            "current": self.current,
+            "error": self.error,
+        }
 
 
 def _iso(value: Any) -> str:
@@ -162,37 +201,118 @@ class WebApiMixin:
         self.store.repos.subs.update(sub.id, next_check_at=datetime.now(UTC) - timedelta(seconds=1))
         return {"id": sub.id, "queued": True}
 
-    @API("webui_import_subscriptions", description="批量导入订阅")
+    @API("webui_import_subscriptions", description="开始后台批量导入订阅")
     async def webui_import_subscriptions(self, links: str = "", session: str = "", title: str = "") -> dict[str, Any]:
         if self.sub_service is None or self.store is None:
             raise RuntimeError("插件尚未加载")
         session = session.strip()
         if not session:
             raise ValueError("批量导入需要填目标会话 ID，否则订阅建立后没有推送对象")
-        directory = self._session_directory()
-        known_label, known_platform = directory.get(session, ("", ""))
-        imported, duplicated, failed = 0, 0, []
-        for raw in [line.strip() for line in links.replace(",", "\n").splitlines()]:
-            if not raw:
-                continue
-            try:
-                result = await self.sub_service.subscribe(user_id="webui", raw_link=raw, stream_id=session, title=title)
-            except (RsshubError, ValueError) as exc:
-                failed.append(f"{raw}: {exc}")
-                continue
-            if result.created_subscription:
-                if known_label and result.sub.id is not None and result.sub.session_label == session:
-                    self.store.repos.subs.update(
-                        result.sub.id,
-                        session_label=known_label,
-                        platform_name=known_platform,
-                    )
-                imported += 1
-            else:
-                duplicated += 1
-        return {"imported": imported, "duplicated": duplicated, "failed": failed}
+        raw_links = [line.strip() for line in links.replace(",", "\n").splitlines() if line.strip()]
+        if not raw_links:
+            raise ValueError("请至少填写一个订阅地址")
+        active = getattr(self, "_import_task", None)
+        if active is not None and not active.done():
+            raise RuntimeError("已有一批订阅正在导入，请等它完成后再开始下一批")
+
+        jobs = self._get_import_jobs()
+        job = _ImportJob(job_id=uuid4().hex[:16], links=raw_links, session=session, title=title.strip())
+        jobs[job.job_id] = job
+        self._prune_import_jobs(jobs)
+        self._import_task = asyncio.create_task(self._run_import_job(job))
+        return job.snapshot()
+
+    @API("webui_import_status", description="查询批量导入进度")
+    async def webui_import_status(self, job_id: str = "") -> dict[str, Any]:
+        job = self._get_import_jobs().get(job_id.strip())
+        if job is None:
+            raise ValueError("导入任务不存在；插件重载后内存中的任务进度会清空")
+        return job.snapshot()
 
     # ── 内部 ────────────────────────────────────────────────────
+
+    def _get_import_jobs(self) -> dict[str, _ImportJob]:
+        jobs = getattr(self, "_import_jobs", None)
+        if jobs is None:
+            jobs = {}
+            self._import_jobs = jobs
+        return jobs
+
+    @staticmethod
+    def _prune_import_jobs(jobs: dict[str, _ImportJob]) -> None:
+        if len(jobs) <= _IMPORT_JOB_RETENTION:
+            return
+        for job_id, job in list(jobs.items()):
+            if len(jobs) <= _IMPORT_JOB_RETENTION:
+                break
+            if job.status in _IMPORT_TERMINAL_STATUS:
+                del jobs[job_id]
+
+    async def _run_import_job(self, job: _ImportJob) -> None:
+        service = self.sub_service
+        store = self.store
+        if service is None or store is None:
+            job.status = "failed"
+            job.error = "插件尚未加载"
+            return
+        try:
+            directory = self._session_directory()
+            known_label, known_platform = directory.get(job.session, ("", ""))
+            for raw in job.links:
+                job.current = raw
+                try:
+                    result = await service.subscribe(
+                        user_id="webui", raw_link=raw, stream_id=job.session, title=job.title
+                    )
+                    if result.created_subscription:
+                        if known_label and result.sub.id is not None and result.sub.session_label == job.session:
+                            store.repos.subs.update(
+                                result.sub.id,
+                                session_label=known_label,
+                                platform_name=known_platform,
+                            )
+                        job.imported += 1
+                    else:
+                        job.duplicated += 1
+                except (RsshubError, ValueError) as exc:
+                    self._record_import_failure(job, raw, str(exc))
+                except Exception as exc:
+                    self.ctx.logger.exception("WebUI 批量导入条目失败：%s", raw)
+                    self._record_import_failure(job, raw, str(exc))
+                finally:
+                    job.processed += 1
+            job.status = "completed"
+            self.ctx.logger.info(
+                "WebUI 批量导入完成：job=%s imported=%d duplicated=%d failed=%d",
+                job.job_id,
+                job.imported,
+                job.duplicated,
+                job.failed_count,
+            )
+        except asyncio.CancelledError:
+            job.status = "cancelled"
+            raise
+        except Exception as exc:
+            job.status = "failed"
+            job.error = str(exc)[:1000]
+            self.ctx.logger.exception("WebUI 批量导入任务失败：%s", job.job_id)
+        finally:
+            job.current = ""
+
+    @staticmethod
+    def _record_import_failure(job: _ImportJob, raw: str, reason: str) -> None:
+        job.failed_count += 1
+        if len(job.failed) < _IMPORT_FAILURE_DETAILS:
+            job.failed.append(f"{raw}: {reason}"[:1000])
+
+    async def _cancel_import_jobs(self) -> None:
+        task = getattr(self, "_import_task", None)
+        if task is None:
+            return
+        self._import_task = None
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
     def _session_directory(self) -> dict[str, tuple[str, str]]:
         """从全部订阅提取 target_session -> (可读标签, 平台名)，优先保留非哈希的可读标签。"""

@@ -4,12 +4,13 @@
 https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub
 衍生作品，遵循 AGPL-3.0 许可。
 
-组件：15 个 @Tool（LLM 主力交互）+ 6 个 @Command（高频命令）+ 8 个 WebUI @API。
+组件：15 个 @Tool（LLM 主力交互）+ 6 个 @Command（高频命令）+ 9 个 WebUI @API。
 逻辑下沉在 rsshub/ 各模块，本文件只做组件声明与薄转发。
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Literal
 
@@ -319,6 +320,8 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
         self._poller: FeedPoller | None = None
         self._dispatcher: Dispatcher | None = None
         self._scheduler: Scheduler | None = None
+        self._import_task: asyncio.Task[None] | None = None
+        self._import_jobs: dict[str, Any] = {}
 
     def get_components(self) -> list[dict[str, Any]]:
         """按配置决定是否把工具注册给宿主。
@@ -391,6 +394,8 @@ class RsshubPlugin(RssToolsMixin, RssCommandsMixin, WebApiMixin, MaiBotPlugin):
         self._scheduler.start()
 
     async def _teardown(self) -> None:
+        await self._cancel_import_jobs()
+        self._import_jobs.clear()
         if self._scheduler is not None:
             await self._scheduler.stop()
             self._scheduler = None

@@ -391,15 +391,19 @@ def test_dr23_single_entry_text_shape() -> None:
 @pytest.mark.asyncio
 async def test_dr15_import_requires_session_and_counts_duplicates(store: Store, tmp_path: object) -> None:
     from tests.test_web_api import Harness as WebHarness
+    from tests.test_web_api import wait_import
 
     harness = WebHarness(StubCtx(tmp_path), store, FakeClient(content=RSS))  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         await harness.webui_import_subscriptions(links="https://example.com/feed.xml", session="")
 
-    first = await harness.webui_import_subscriptions(links="https://example.com/feed.xml", session="s1")
-    second = await harness.webui_import_subscriptions(links="https://example.com/feed.xml", session="s1")
+    first_job = await harness.webui_import_subscriptions(links="https://example.com/feed.xml", session="s1")
+    first = await wait_import(harness, first_job["job_id"])
+    second_job = await harness.webui_import_subscriptions(links="https://example.com/feed.xml", session="s1")
+    second = await wait_import(harness, second_job["job_id"])
 
-    assert first == {"imported": 1, "duplicated": 0, "failed": []}
+    assert first["status"] == "completed"
+    assert first["imported"] == 1 and first["duplicated"] == 0 and first["failed_count"] == 0
     assert second["imported"] == 0 and second["duplicated"] == 1
 
 

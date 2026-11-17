@@ -86,7 +86,7 @@ def test_tool_switch_hides_components_from_host() -> None:
 
     instance = load_plugin_module().create_plugin()
     instance.set_plugin_config({"plugin": {"config_version": "1.3.0", "tools_enabled": False}})
-    assert Counter(item["type"] for item in instance.get_components()) == {"API": 8, "COMMAND": 6}
+    assert Counter(item["type"] for item in instance.get_components()) == {"API": 9, "COMMAND": 6}
 
     instance.set_plugin_config({"plugin": {"config_version": "1.3.0", "tools_enabled": True}})
     assert Counter(item["type"] for item in instance.get_components())["TOOL"] == 15

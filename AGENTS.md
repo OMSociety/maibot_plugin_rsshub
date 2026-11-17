@@ -1,12 +1,12 @@
 # AGENTS.md — maibot_plugin_rsshub Agent 宪法
 
 适用范围：本仓库全部目录。子目录若出现 AGENTS.md，以更接近改动点的那份为准。
-最后更新：2026-11-11
+最后更新：2026-11-18
 
 ## 项目概览
 
 - 一句话定位：MaiBot（麦麦）的 RSS/Atom 订阅插件，负责定时抓取、去重推送，并把订阅读写暴露成 LLM 工具、聊天命令与 WebUI 页面。
-- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.20.0–2.22.99（宿主 MaiBot 1.4.0 起）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / socksio；pytest + ruff；GitHub Actions 在声明下限与当前宿主版本上各跑一遍。
+- 技术栈：Python ≥3.11（CI 与宿主都用 3.12，验收以 3.12 为准；3.11 未被 CI 覆盖，仓库也没有声明 requires-python）；`maibot-plugin-sdk` 2.23.0–2.23.99（宿主 MaiBot 1.4.5–1.4.99）；SQLite（WAL）；feedparser / beautifulsoup4 / lxml / socksio；pytest + ruff；GitHub Actions 在 SDK 2.23.0 上跑完整验收。
 - 文档索引：
   - 功能、安装、配置、命令与工具表：[README.md](./README.md)
   - 变更记录：[CHANGELOG.md](./CHANGELOG.md)
@@ -17,15 +17,15 @@
 
 | 目的 | 命令 |
 |---|---|
-| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.20.0"` |
+| 安装依赖 | `pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.23.0"` |
 | 跑全部测试 | `python -m pytest -q` |
 | 跑单个测试文件 | `python -m pytest tests/test_dispatcher.py -q` |
 | Lint | `ruff check .` |
 | 格式检查 | `ruff format --check .` |
-| 校验 WebUI 声明 | `python tools/check_webui.py .`（核对 `webui.json` 的 `api` 与 `web_api.py` 的 `@API` 名称、参数一致，页面入口存在且不超过 2 MiB，能力名合法） |
+| 校验 WebUI 声明 | `python tools/check_webui.py .`（核对 `webui.json` 的 `api` 与 `web_api.py` 的 `@API` 名称、参数一致，页面入口存在且全部 custom HTML 合计不超过 8 MiB，能力名合法） |
 | 校验本文件 | `python tools/check_agents_md.py --root . --no-path`（CI 与本地用同一参数） |
 
-验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.20.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
+验证更高版本的 SDK 时，把 `maibot-plugin-sdk==2.23.0` 换成目标版本重装即可；也可以用 `MAIBOT_SDK_PATH` 指向解压后的 SDK 目录，测试夹具会优先用它。
 
 ```bash
 python -m pytest -q
@@ -35,7 +35,7 @@ python -m pytest -q
 
 ```text
 plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
-  └─> rsshub/interfaces/web_api.py     WebUI 的 8 个 @API
+  └─> rsshub/interfaces/web_api.py     WebUI 的 9 个 @API
   └─> rsshub/application               services / tools / commands
         └─> rsshub/domain              实体与四级配置继承
         └─> rsshub/infrastructure      persistence / fetcher / media / rendering / schedule
@@ -73,7 +73,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。
 - `plugin.config_version` 与 `_manifest.json` 的 `version` 相互独立：前者只跟配置结构走，发版不必动它。
 - 改依赖：Python 包同时写进 `requirements.txt` 与 `_manifest.json` 的 `dependencies`。
-- 用 SDK 新 API：本插件声明下限 2.20.0，2.22.0 之后才有的能力必须在调用处加版本判断与降级，并保留 `REMOVAL:` 注释说明何时删除。
+- 用 SDK 新 API：当前基线是 2.23.0，只使用这一基线提供的接口；不为旧版 SDK 增加版本判断或降级分支。
 - 工具开关：`plugin.tools_enabled` 关闭时 `get_components()` 会过滤掉全部 TOOL，且每个工具由 `tools_enabled` 装饰器兜底回绝；宿主只在注册时收集组件，所以开关改动必须重载插件才彻底生效。新增工具时把 `@tools_enabled` 放在 `@Tool` 内侧，别漏。
 - 音视频文件只能经工具调用发送：宿主只为模型工具调用签发文件凭证（`ctx.files.*`），后台调度器推送没有凭证，音视频一律附链接行。不要为了「统一体验」把链接行改成 `ctx.files.send`，后台会抛 `PermissionError`。
 - `tools/check_agents_md.py` 与上游 agent-onboarding 技能保持整份一致（已在 `ruff.toml` 的 `exclude` 里排除），升级时整份替换而不是逐行改样式。
@@ -87,7 +87,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 验收标准
 
-改动完成 = 下列全部通过（CI 在 SDK 2.20.0 与 2.22.1 上各跑一遍）：
+改动完成 = 下列全部通过（CI 在 SDK 2.23.0 上跑一遍）：
 
 1. `python -m pytest -q`
 2. `ruff check .`
@@ -95,7 +95,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 4. `python tools/check_webui.py .`
 5. `python tools/check_agents_md.py --root . --no-path`（CI 用同一参数；`--no-path` 关闭 PATH 兜底，保证本地与 CI 结论一致）
 
-CI 跑两个点：声明下限 SDK 2.20.0 与当前宿主所用 SDK 2.22.1；补丁版之间不逐个跑。
+CI 跑声明下限 SDK 2.23.0；后续补丁版需要验证时单独安装目标版本，不扩展到旧版兼容矩阵。
 
 ## 提交与协作
 

@@ -19,11 +19,11 @@
 - **内容处理链**：`ai_filter` 过滤、`ai_transform` 改写，按订阅源或用户挂载
 - **推送历史**：每次推送按条目落库，失败逐条重试，可按会话查询；成功记录同时用作重复推送的判据
 - **富媒体**：正文图与封面图随消息发出，多图合并转发，表格渲染成图片；音视频在工具推送里按原文件发送，定时推送附链接
-- **WebUI 管理台**：在麦麦 WebUI 侧栏管理订阅、改推送参数、看推送历史与批量导入；停用的订阅留在列表里可随时启用，时间按本地时区显示
+- **WebUI 管理台**：在麦麦 WebUI 侧栏管理订阅、改推送参数、看推送历史与批量导入；停用的订阅留在列表里可随时启用，时间按本地时区显示；批量导入在后台执行，页面可查看进度与失败原因
 
 ## 安装
 
-宿主要求：MaiBot 1.4.0–1.4.99，`maibot-plugin-sdk` 2.20.0–2.22.99（与 `_manifest.json` 声明一致）。
+宿主要求：MaiBot 1.4.5–1.4.99，`maibot-plugin-sdk` 2.23.0–2.23.99（与 `_manifest.json` 声明一致）。
 
 音视频文件发送还要求宿主打开「文件功能」开关，见上文提示；未开启时工具推送会检测到文件服务不可用，自动退回链接行。
 
@@ -108,7 +108,7 @@ allow_users = ["qq:你的QQ号"]
 
 - **音视频与文件**：宿主只为模型工具调用签发文件发送凭证，因此 `rss_push_xml_entry` 推送的音视频按原文件发送；后台定时推送没有凭证，音频与视频在正文末尾附一行原始链接。
 - **订阅地址**：直接填 Feed 地址或 RSSHub 路由（以 `/` 开头，按 `rsshub.base_url` 拼接），内置 RSSHub 路由检索不在插件里，路由需要自己填。
-- **管理台**：宿主 WebUI 的插件页面，覆盖订阅管理、推送历史、参数调整与批量导入。
+- **管理台**：宿主 WebUI 的插件页面，覆盖订阅管理、推送历史、参数调整与批量导入。页面使用宿主主题与公共控件，批量导入通过后台任务执行，导入进度只保留在当前插件进程内。
 - **数据**：订阅与推送历史存在插件自己的 SQLite 库（`data_dir/rsshub.db`），换环境时随 `data_dir` 一起迁移。
 - **调度**：宿主没有 cron 能力，插件自带 asyncio 调度循环，重启后按 `next_check_at` 续跑。抓取连续失败时按订阅自己的间隔逐次翻倍推迟下一轮（最长 6 小时），成功一次即恢复原间隔。
 - **重试**：推送失败按条目各记一条历史，重发从 60 秒起逐次翻倍退避，单条最多重发 3 次。
@@ -122,11 +122,11 @@ allow_users = ["qq:你的QQ号"]
 ## 开发
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.20.0"
+pip install -r requirements.txt -r requirements-dev.txt "maibot-plugin-sdk==2.23.0"
 python -m pytest -q
 ruff format --check . && ruff check .
 python tools/check_webui.py .
-python tools/check_agents_md.py --root .
+python tools/check_agents_md.py --root . --no-path
 ```
 
 测试宿主环境与生产实例分离；联调时把本仓库目录拷到宿主 `plugins/omsociety_rsshub` 后热重载。

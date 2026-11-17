@@ -29,6 +29,12 @@
             "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
             "status": { "type": "string", "max_length": 32 }
           }
+        },
+        "import_status": {
+          "api": "webui_import_status",
+          "parameters": {
+            "job_id": { "type": "string", "required": true, "max_length": 64 }
+          }
         }
       },
       "actions": {
@@ -60,7 +66,7 @@
           "api": "webui_import_subscriptions",
           "parameters": {
             "links": { "type": "string", "required": true, "max_length": 20000 },
-            "session": { "type": "string", "max_length": 255 },
+            "session": { "type": "string", "required": true, "max_length": 255 },
             "title": { "type": "string", "max_length": 200 }
           }
         }

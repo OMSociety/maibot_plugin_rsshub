@@ -1,9 +1,10 @@
 """WebUI 声明离线校验：webui.json 与 web_api.py 的 @API 是否一一对应。
 
 只依赖标准库，供本地与 CI 使用。检查项：
-1. webui.json 可解析，schema_version 为 2，页面入口文件存在且不超过 2 MiB；
-2. 声明的查询/动作与 web_api.py 里带 @API 装饰器的方法同名同参数（缺一个或参数不一致都报错）；
-3. required_capabilities 只使用宿主认识的四个能力名。
+1. webui.json 可解析，schema_version 为 2，页面入口在插件目录内且全部 custom HTML 合计不超过 8 MiB；
+2. custom 页面声明 custom_pages 能力，layout 为 document 或 viewport；
+3. 声明的查询/动作与 web_api.py 里带 @API 装饰器的方法同名同参数（缺一个或参数不一致都报错）；
+4. required_capabilities 只使用宿主认识的四个能力名。
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import sys
 from pathlib import Path
 
 KNOWN_CAPABILITIES = {"declarative_basic", "custom_pages", "image_upload", "structured_arguments"}
-MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
+MAX_TOTAL_DOCUMENT_BYTES = 8 * 1024 * 1024
 API_SOURCE = Path("rsshub/interfaces/web_api.py")
 
 
@@ -83,17 +84,36 @@ def main(root: Path) -> int:
     if unknown:
         problems.append(f"required_capabilities 含未知能力: {sorted(unknown)}")
 
+    total_document_bytes = 0
     for page in declaration.get("pages", []):
+        if page.get("mode") == "custom":
+            if "custom_pages" not in capabilities:
+                problems.append(f"custom 页面 {page.get('id', '')} 未声明 custom_pages 能力")
+            if page.get("layout", "document") not in {"document", "viewport"}:
+                problems.append(f"custom 页面 {page.get('id', '')} 的 layout 非法")
         entry = page.get("entry")
         if not entry:
             continue
-        document = root / entry
-        if not document.is_file():
-            problems.append(f"页面入口不存在: {entry}")
+        entry_path = Path(entry)
+        if (
+            entry_path.is_absolute()
+            or entry_path.anchor
+            or ".." in entry_path.parts
+            or entry_path.suffix.lower() != ".html"
+        ):
+            problems.append(f"页面入口必须是插件内的相对 HTML 路径: {entry}")
             continue
-        size = document.stat().st_size
-        if size > MAX_DOCUMENT_BYTES:
-            problems.append(f"页面入口 {entry} 超过 2 MiB（{size} 字节）")
+        document = root / entry_path
+        if any(part.is_symlink() or part.is_junction() for part in [document, *document.parents] if part != root):
+            problems.append(f"页面入口路径不能包含链接: {entry}")
+            continue
+        if not document.resolve().is_relative_to(root) or not document.is_file():
+            problems.append(f"页面入口不存在或超出插件目录: {entry}")
+            continue
+        if page.get("mode") == "custom":
+            total_document_bytes += document.stat().st_size
+    if total_document_bytes > MAX_TOTAL_DOCUMENT_BYTES:
+        problems.append(f"custom HTML 合计超过 8 MiB（{total_document_bytes} 字节）")
 
     declared = collect_bindings(declaration)
     code = api_signatures(root)

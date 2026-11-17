@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from rsshub.application.services.subscription_service import SubscriptionService
@@ -32,6 +34,15 @@ def harness(tmp_path: object) -> Harness:
     ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
     store = Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]
     return Harness(ctx, store, FakeClient(content=RSS_XML.encode("utf-8")))
+
+
+async def wait_import(harness: Harness, job_id: str) -> dict[str, object]:
+    for _ in range(200):
+        result = await harness.webui_import_status(job_id)
+        if result["status"] != "running":
+            return result
+        await asyncio.sleep(0.01)
+    raise AssertionError("后台导入任务未在测试预算内结束")
 
 
 @pytest.mark.asyncio
@@ -170,9 +181,29 @@ async def test_history_and_import_preserve_session_label(harness: Harness) -> No
     history = await harness.webui_list_history()
     assert history["items"][0]["session_label"] == "QQ群:123456789"
 
-    res = await harness.webui_import_subscriptions(links="https://example.com/other.xml", session="s1")
+    job = await harness.webui_import_subscriptions(links="https://example.com/other.xml", session="s1")
+    res = await wait_import(harness, job["job_id"])
+    assert res["status"] == "completed"
     assert res["imported"] == 1
     subs = harness.store.repos.subs.list_by_session("s1")
     imported_sub = next(s for s in subs if s.user_id == "webui")
     assert imported_sub.session_label == "QQ群:123456789"
     assert imported_sub.platform_name == "qq"
+
+
+@pytest.mark.asyncio
+async def test_import_job_can_be_cancelled_before_store_shutdown(harness: Harness) -> None:
+    class SlowService:
+        async def subscribe(self, **kwargs: object) -> object:
+            await asyncio.Event().wait()
+            raise AssertionError("取消后不应继续订阅")
+
+    harness.sub_service = SlowService()  # type: ignore[assignment]
+    job = await harness.webui_import_subscriptions(links="https://example.com/slow.xml", session="s1")
+    await asyncio.sleep(0)
+
+    await harness._cancel_import_jobs()
+    result = await harness.webui_import_status(job["job_id"])
+
+    assert result["status"] == "cancelled"
+    assert harness._import_task is None
