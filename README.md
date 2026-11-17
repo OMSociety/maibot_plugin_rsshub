@@ -1,6 +1,22 @@
-# RSSHub 订阅推送（MaiBot 插件）
+<p align="center"><strong>中文</strong></p>
 
-把 RSS/Atom/JSON Feed 订阅接入麦麦：定时轮询、去重推送、人格化播报，并在群里直接用自然语言管理订阅。
+<div align="center">
+
+<h1><img src="assets/icon.png" width="192" alt="RSSHub 订阅推送"><br>RSSHub 订阅推送（MaiBot 插件）</h1>
+
+**把 RSS/Atom/JSON Feed 订阅接入麦麦** —— 定时轮询 · 去重推送 · 人格化播报 · 富媒体渲染
+
+[![Version](https://img.shields.io/github/v/tag/OMSociety/maibot_plugin_rsshub?label=version&color=blue)](https://github.com/OMSociety/maibot_plugin_rsshub/releases)
+[![MaiBot](https://img.shields.io/badge/MaiBot-1.4.5-green.svg)](https://github.com/OMSociety/maibot_plugin_rsshub)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-orange.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/OMSociety/maibot_plugin_rsshub)](https://github.com/OMSociety/maibot_plugin_rsshub/stargazers)
+[![Issues](https://img.shields.io/github/issues/OMSociety/maibot_plugin_rsshub)](https://github.com/OMSociety/maibot_plugin_rsshub/issues)
+
+[功能](#功能) • [安装](#安装) · [配置](#配置) · [命令](#命令) · [LLM 工具](#llm-工具) · [能力与契约事实](#能力与契约事实) · [开发](#开发) · [许可与致谢](#许可与致谢)
+
+</div>
+
+---
 
 本插件自 AstrBot 插件 [astrbot_plugin_rsshub](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub)（作者 FlanChanXwO）移植并重设计，遵循 AGPL-3.0。
 

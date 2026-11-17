@@ -48,8 +48,9 @@
   "plugin_type": "tool",
   "display": {
     "icon": {
-      "type": "lucide",
-      "value": "rss",
+      "type": "local",
+      "value": "assets/icon.png",
+      "fallback": "package",
       "background": "#EA580C"
     }
   },
