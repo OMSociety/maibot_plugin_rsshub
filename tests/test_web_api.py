@@ -207,3 +207,12 @@ async def test_import_job_can_be_cancelled_before_store_shutdown(harness: Harnes
 
     assert result["status"] == "cancelled"
     assert harness._import_task is None
+
+
+@pytest.mark.asyncio
+async def test_unknown_import_job_is_a_readable_terminal_state(harness: Harness) -> None:
+    result = await harness.webui_import_status("deleted-after-reload")
+
+    assert result["status"] == "unknown"
+    assert result["job_id"] == "deleted-after-reload"
+    assert "重载" in result["error"]

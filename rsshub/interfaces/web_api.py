@@ -224,9 +224,21 @@ class WebApiMixin:
 
     @API("webui_import_status", description="查询批量导入进度")
     async def webui_import_status(self, job_id: str = "") -> dict[str, Any]:
-        job = self._get_import_jobs().get(job_id.strip())
+        job_id = job_id.strip()
+        job = self._get_import_jobs().get(job_id)
         if job is None:
-            raise ValueError("导入任务不存在；插件重载后内存中的任务进度会清空")
+            return {
+                "job_id": job_id,
+                "status": "unknown",
+                "processed": 0,
+                "total": 0,
+                "imported": 0,
+                "duplicated": 0,
+                "failed_count": 0,
+                "failed": [],
+                "current": "",
+                "error": "导入任务不存在；插件重载后内存中的任务进度会清空",
+            }
         return job.snapshot()
 
     # ── 内部 ────────────────────────────────────────────────────

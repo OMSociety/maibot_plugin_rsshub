@@ -178,7 +178,7 @@
 
     const MODE_LABELS = { persona: '人格化', direct: '直推', silent: '注入' };
     const STATUS_LABELS = { success: '成功', failed: '失败', stopped: '已停止', skipped: '已过滤' };
-    const IMPORT_STATUS_LABELS = { running: '进行中', completed: '已完成', failed: '失败', cancelled: '已取消' };
+    const IMPORT_STATUS_LABELS = { running: '进行中', completed: '已完成', failed: '失败', cancelled: '已取消', unknown: '任务已失效' };
     const state = { subs: { page: 1, pages: 1, keyword: '' }, history: { page: 1, pages: 1, status: '' } };
     let requestTail = Promise.resolve();
     function enqueue(request) {
@@ -448,6 +448,12 @@
         const job = await api.query('import_status', { job_id: jobId });
         if (jobId !== importJobId) return;
         renderImportJob(job);
+        if (job.status === 'unknown') {
+          importJobId = '';
+          $('do-import').disabled = false;
+          fail(job.error || '导入任务已失效，请重新提交');
+          return;
+        }
         if (job.status === 'running') {
           clearTimeout(importTimer);
           importTimer = setTimeout(() => pollImport(jobId), 500);
