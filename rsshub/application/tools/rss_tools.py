@@ -105,7 +105,7 @@ class RssToolsMixin:
         parameters={
             "subscription_id": {
                 "type": "integer",
-                "description": "订阅编号，见 rss_list_subscriptions",
+                "description": "订阅编号，见 rss_list_feeds",
                 "required": False,
             },
         },
@@ -128,9 +128,9 @@ class RssToolsMixin:
             return {"success": False, "content": "当前会话没有订阅"}
         return {"success": True, "content": f"已取消当前会话全部 {removed} 个订阅"}
 
-    @Tool("rss_list_subscriptions", description="列出当前会话的订阅及其推送配置")
+    @Tool("rss_list_feeds", description="列出当前会话的订阅及其推送配置")
     @tools_enabled
-    async def rss_list_subscriptions(self, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
+    async def rss_list_feeds(self, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
         subs = self.sub_service.list_for_session(stream_id)
         if not subs:
             return {"success": True, "content": "当前会话还没有订阅"}
@@ -148,7 +148,7 @@ class RssToolsMixin:
         return {"success": True, "content": "\n".join(lines), "structured_content": {"count": len(subs)}}
 
     @Tool(
-        "rss_set_subscription_option",
+        "rss_set_feed_option",
         description="修改某个订阅的选项",
         parameters={
             "subscription_id": {"type": "integer", "description": "订阅编号"},
@@ -157,7 +157,7 @@ class RssToolsMixin:
         },
     )
     @tools_enabled
-    async def rss_set_subscription_option(
+    async def rss_set_feed_option(
         self, subscription_id: int = 0, option: str = "", value: str = "", **kwargs: Any
     ) -> dict[str, Any]:
         try:
@@ -219,7 +219,7 @@ class RssToolsMixin:
     )
     @tools_enabled
     async def rss_list_push_history(self, limit: int = 10, stream_id: str = "", **kwargs: Any) -> dict[str, Any]:
-        records = self.store.repos.history.list_by_session(stream_id, max(1, min(limit, 50)))
+        records = self.store.repos.history.list_by_session(stream_id, max(1, min(int(limit), 50)))
         if not records:
             return {"success": True, "content": "没有推送记录"}
         lines = [
@@ -411,7 +411,7 @@ class RssToolsMixin:
         return sub
 
     @Tool(
-        "rss_set_subscription_handlers",
+        "rss_set_feed_handlers",
         description="设置某个订阅的 RSS 文本处理器链（仅 ai_filter / ai_transform）",
         parameters={
             "subscription_id": {"type": "integer", "description": "订阅编号"},
@@ -422,7 +422,7 @@ class RssToolsMixin:
         },
     )
     @tools_enabled
-    async def rss_set_subscription_handlers(
+    async def rss_set_feed_handlers(
         self, subscription_id: int = 0, handlers_json: str = "", **kwargs: Any
     ) -> dict[str, Any]:
         sub = self._owned_sub(subscription_id, str(kwargs.get("user_id") or ""), str(kwargs.get("stream_id") or ""))

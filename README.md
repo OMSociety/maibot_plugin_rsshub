@@ -101,14 +101,14 @@ allow_users = ["qq:你的QQ号"]
 | `rss_subscribe` | 订阅新源 |
 | `rss_unsubscribe` | 退订 |
 | `rss_unsubscribe_all` | 退订当前会话全部 |
-| `rss_list_subscriptions` | 列出订阅 |
+| `rss_list_feeds` | 列出订阅 |
 | `rss_push_xml_entry` | 手动推送指定条目 |
 | `rss_list_push_history` | 查询推送历史 |
 | `rss_list_handlers` | 列出可用内容处理器 |
 | `rss_get_handlers` | 查看当前生效的处理器 |
-| `rss_set_subscription_handlers` | 设置订阅源处理器 |
+| `rss_set_feed_handlers` | 设置订阅源处理器 |
 | `rss_set_user_handlers` | 设置用户默认处理器 |
-| `rss_set_subscription_option` | 修改订阅源选项 |
+| `rss_set_feed_option` | 修改订阅源选项 |
 | `rss_set_user_default_option` | 修改用户默认选项 |
 | `rss_set_session_default_option` | 设置会话默认选项 |
 | `rss_get_session_defaults` | 查看会话默认配置 |

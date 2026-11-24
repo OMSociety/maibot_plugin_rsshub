@@ -351,7 +351,7 @@ async def test_dr22_handlers_tools_check_ownership(store: Store, tmp_path: objec
 
     denied = await harness.rss_get_handlers(subscription_id=other.id, user_id="u1", stream_id="s1")
     assert denied["success"] is False
-    denied_write = await harness.rss_set_subscription_handlers(
+    denied_write = await harness.rss_set_feed_handlers(
         subscription_id=other.id, handlers_json="[]", user_id="u1", stream_id="s1"
     )
     assert denied_write["success"] is False

@@ -120,8 +120,16 @@ async def test_list_subscriptions_includes_media_status(tmp_path: object) -> Non
     harness = _harness(tmp_path)
     await harness.rss_subscribe(link="https://example.com/feed.xml", title="测试源", stream_id="s1", user_id="u1")
 
-    listed = await harness.rss_list_subscriptions(stream_id="s1")
+    listed = await harness.rss_list_feeds(stream_id="s1")
 
     assert listed["success"] is True
     assert "配图=开启" in listed["content"]
     assert "文本处理链=无" in listed["content"]
+
+
+@pytest.mark.asyncio
+async def test_push_history_accepts_string_limit(tmp_path: object) -> None:
+    harness = _harness(tmp_path)
+    result = await harness.rss_list_push_history(limit="5", stream_id="s1")
+
+    assert result["success"] is True
