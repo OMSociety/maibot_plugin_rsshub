@@ -210,7 +210,7 @@ def make_config(**overrides: object) -> SimpleNamespace:
         ),
         network=SimpleNamespace(proxy_enabled=False, proxy_url="", allow_private_addresses=True),
         push=SimpleNamespace(
-            default_mode="persona",
+            default_mode="silent",
             persona_fallback_to_direct=True,
             persona_timeout_seconds=5,
             max_reference_chars=2000,

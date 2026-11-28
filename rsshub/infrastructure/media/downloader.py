@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -281,7 +282,7 @@ class MediaDownloader:
         return base64.b64encode(payload).decode("ascii"), ""
 
     @staticmethod
-    def _looks_like_image(payload: bytes, headers: dict[str, str]) -> bool:
+    def _looks_like_image(payload: bytes, headers: Mapping[str, str]) -> bool:
         content_type = (headers.get("content-type") or "").split(";")[0].strip().lower()
         if content_type.startswith("image/"):
             return content_type in _IMAGE_TYPES or content_type.startswith("image/")
@@ -320,7 +321,7 @@ class TransferFile:
     mime: str
 
 
-def _guess_file_type(url: str, headers: dict[str, str]) -> tuple[str, str]:
+def _guess_file_type(url: str, headers: Mapping[str, str]) -> tuple[str, str]:
     content_type = (headers.get("content-type") or "").split(";")[0].strip().lower()
     if content_type.startswith(("audio/", "video/")):
         suffix = Path(urlparse(url).path).suffix.lower()

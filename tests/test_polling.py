@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from rsshub.application.services.content_handler import ContentHandlerChain
@@ -11,6 +12,7 @@ from rsshub.application.services.dispatcher import Dispatcher
 from rsshub.application.services.polling import FeedPoller, build_defaults
 from rsshub.domain.entry import Entry
 from rsshub.errors import FeedFetchError
+from rsshub.infrastructure.fetcher.client import HttpClient
 from rsshub.infrastructure.persistence.models import Feed, Subscription
 from rsshub.infrastructure.persistence.store import Store
 from tests.support import FakeClient, StubCtx, make_config, make_retries_due
@@ -55,11 +57,13 @@ class Harness:
         return feed, sub
 
 
-def _harness(tmp_path: object, content: bytes, config: object | None = None) -> Harness:
+def _harness(
+    tmp_path: object, content: bytes, config: object | None = None, client: HttpClient | None = None
+) -> Harness:
     ctx = StubCtx(tmp_path)  # type: ignore[arg-type]
     store = Store.open(tmp_path / "rsshub.db")  # type: ignore[operator]
-    client = FakeClient(content=content, url=FEED_URL, payloads={IMAGE_URL: PNG})
-    return Harness(ctx, store, config or make_config(), client)
+    fallback = FakeClient(content=content, url=FEED_URL, payloads={IMAGE_URL: PNG})
+    return Harness(ctx, store, config or make_config(), client or fallback)
 
 
 @pytest.mark.asyncio
@@ -73,6 +77,47 @@ async def test_first_poll_builds_baseline_without_pushing(tmp_path: object) -> N
     assert harness.ctx.send.sent == []
     assert harness.store.repos.feeds.get(feed.id).entry_hashes
     assert harness.store.repos.subs.get(sub.id).next_check_at
+
+
+@pytest.mark.asyncio
+async def test_conditional_request_cycle_uses_wire_headers(tmp_path: object) -> None:
+    """验证头落库并回归到 wire，304 静默，更新后的 200 推新条目并清空未回传的验证头。"""
+    body = _rss(_item("g1", "第一篇"), _item("g2", "第二篇"))
+    script = [
+        (200, {"etag": 'W/"v1"', "last-modified": "Wed, 21 Oct 2015 07:28:00 GMT"}, body),
+        (304, {}, b""),
+        (200, {}, _rss(_item("g1", "第一篇"), _item("g2", "第二篇"), _item("g3", "第三篇"))),
+    ]
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        status, headers, content = script[len(seen) - 1]
+        return httpx.Response(status, headers=headers, content=content)
+
+    client = HttpClient(timeout=5.0, user_agent="test-agent", allow_private=True)
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), trust_env=False, follow_redirects=False)
+    harness = _harness(tmp_path, b"", client=client)
+    feed, sub = harness.add_subscription()
+
+    await harness.poller.poll(feed, [sub])
+    stored = harness.store.repos.feeds.get(feed.id)
+    assert stored.etag == 'W/"v1"'
+    assert stored.last_modified == "Wed, 21 Oct 2015 07:28:00 GMT"
+
+    outcome = await harness.poller.poll(stored, [sub])
+    assert seen[1].headers["if-none-match"] == 'W/"v1"'
+    assert seen[1].headers["if-modified-since"] == "Wed, 21 Oct 2015 07:28:00 GMT"
+    assert outcome.not_modified is True
+    assert outcome.new_entries == 0
+
+    outcome = await harness.poller.poll(harness.store.repos.feeds.get(feed.id), [sub])
+    stored = harness.store.repos.feeds.get(feed.id)
+    assert outcome.delivered == 1
+    assert stored.etag is None
+    assert stored.last_modified is None
+
+    await harness.client.close()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

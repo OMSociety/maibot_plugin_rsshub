@@ -67,7 +67,7 @@ plugin.py（唯一入口：配置模型 + 生命周期 + 组件声明）
 
 ## 修改契约
 
-- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.5.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
+- 改配置结构或默认值：改 `plugin.py` 的 config_model；`config_version` 是字符串 semver（当前 `1.6.0`），增删字段或改默认值时递增次要版本、改变字段含义时递增主版本。`config.toml` 由宿主生成，不要提交。
 - 改能力调用：新增任何 `ctx.*` 能力调用，必须同步 `_manifest.json` 的 `capabilities`，否则运行期报 `E_CAPABILITY_DENIED`。
 - 改 `webui.json` 或绑定：宿主在插件注册时校验声明，无效会让整个插件注册失败；改完必须重载插件并确认日志没有「WebUI 声明无效」。
 - 改版本号：`_manifest.json` 的 `version`、git tag `vX.Y.Z`、`CHANGELOG.md` 条目三处必须一致；bump 前先和仓库所有者确认（本仓库由 OMSociety 单人维护）。新增功能 minor、修复 patch、破坏性变更 major，`0.x` 阶段沿用同一规则。

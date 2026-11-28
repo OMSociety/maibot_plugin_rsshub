@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -19,7 +20,7 @@ class FetchResult:
     url: str
     status: int
     content: bytes
-    headers: dict[str, str]
+    headers: Mapping[str, str]
     not_modified: bool = False
 
 
@@ -114,7 +115,7 @@ class HttpClient:
         assert response is not None
         if response.status_code == 304:
             return FetchResult(
-                url=str(response.url), status=304, content=b"", headers=dict(response.headers), not_modified=True
+                url=str(response.url), status=304, content=b"", headers=response.headers, not_modified=True
             )
         if response.status_code != 200:
             raise FeedFetchError(f"抓取失败: HTTP {response.status_code} ({current})")
@@ -122,7 +123,7 @@ class HttpClient:
             url=str(response.url),
             status=response.status_code,
             content=response.content,
-            headers=dict(response.headers),
+            headers=response.headers,
         )
 
     async def close(self) -> None:

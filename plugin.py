@@ -53,7 +53,7 @@ class PluginSection(PluginConfigBase):
         },
     )
     config_version: str = Field(
-        default="1.5.0",
+        default="1.6.0",
         description="配置版本号，请勿手动修改",
         json_schema_extra={"label": "配置版本", "hidden": True},
     )
@@ -148,11 +148,11 @@ class PushSection(PluginConfigBase):
     __ui_order__ = 3
 
     default_mode: Literal["persona", "direct", "silent"] = Field(
-        default="persona",
+        default="silent",
         description="新订阅默认怎么发：人格化播报、原文直推、或注入上下文让麦麦自己决定说不说",
         json_schema_extra={
             "label": "默认推送模式",
-            "hint": "persona=麦麦用自己的口吻说；direct=模板原文；silent=注入上下文并请麦麦想一轮要不要开口",
+            "hint": "silent=注入上下文并请麦麦想一轮要不要开口；persona=麦麦用自己的口吻说；direct=模板原文",
         },
     )
     persona_fallback_to_direct: bool = Field(

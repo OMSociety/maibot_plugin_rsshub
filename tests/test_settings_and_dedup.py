@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from rsshub.application.services.polling import build_defaults
 from rsshub.domain.entry import Entry
 from rsshub.domain.settings import GlobalDefaults, resolve_handlers, resolve_settings
 from rsshub.infrastructure.fetcher.dedup import entry_hash_set, is_known_entry, merge_hashes
 from rsshub.infrastructure.persistence.models import Subscription, User
+from tests.support import make_config
 
 
 def _sub(**kwargs: object) -> Subscription:
@@ -35,6 +37,14 @@ def test_inherit_falls_back_to_global_defaults() -> None:
     assert settings.interval_seconds == 900
     assert settings.push_mode == "silent"
     assert settings.notify is True
+
+
+def test_default_push_mode_is_silent_for_inherit_and_explicit_override() -> None:
+    defaults = build_defaults(make_config())
+
+    assert defaults.default_push_mode == "silent"
+    assert resolve_settings(_sub(), User(user_id="u1"), defaults).push_mode == "silent"
+    assert resolve_settings(_sub(push_mode="persona"), User(user_id="u1"), defaults).push_mode == "persona"
 
 
 def test_handlers_mode_three_states() -> None:

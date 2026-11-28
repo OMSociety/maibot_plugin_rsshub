@@ -6,7 +6,7 @@
 enabled = true
 # 是否把 15 个订阅工具提供给麦麦；关闭后只能用 /订阅 等命令与 WebUI
 tools_enabled = true
-config_version = "1.5.0"
+config_version = "1.6.0"
 
 [polling]
 interval_minutes = 10        # 全局轮询间隔（分钟），单源可在订阅配置中覆盖（1-1440）
@@ -21,7 +21,7 @@ proxy_url = "http://127.0.0.1:7897"
 allow_private_addresses = false   # 仅在内网自建 RSSHub 时开启
 
 [push]
-default_mode = "persona"     # persona / direct / silent（silent=注入上下文并请麦麦想一轮）
+default_mode = "silent"      # silent / persona / direct（persona=麦麦用自己的口吻说，direct=模板原文）
 persona_fallback_to_direct = true
 persona_timeout_seconds = 30
 max_reference_chars = 8000

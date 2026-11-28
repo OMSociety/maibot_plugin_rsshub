@@ -202,8 +202,8 @@ class FeedPoller:
             hashes.extend(entry_hash_set(entry, position))
         feed.entry_hashes = merge_hashes(feed.entry_hashes, hashes)
         feed.title = feed.title or document.title
-        feed.etag = result.headers.get("ETag") or feed.etag
-        feed.last_modified = result.headers.get("Last-Modified") or feed.last_modified
+        feed.etag = result.headers.get("ETag")
+        feed.last_modified = result.headers.get("Last-Modified")
         self._store.repos.feeds.save(feed)
 
     def _advance_schedule(self, subs: list[Subscription], *, failed: bool = False) -> None:

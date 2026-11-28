@@ -19,7 +19,7 @@ class GlobalDefaults:
     """宿主 config.toml 里的全局默认值。"""
 
     interval_seconds: int = 600
-    default_push_mode: str = "persona"
+    default_push_mode: str = "silent"
     notify: int = 1
     length_limit: int = 0
     display_author: int = 0
